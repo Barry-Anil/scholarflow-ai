@@ -18,7 +18,7 @@ import {
   DOCUMENT_JOB_TYPE,
   EMBEDDING_JOB_TYPE,
   MAX_DOCUMENT_BYTES,
-  acceptedDocumentTypes,
+  acceptedDocumentLabels,
   resolveAcceptedDocumentMime,
 } from "./constants";
 import { processDocumentJob } from "./processor";
@@ -129,7 +129,7 @@ export async function uploadDocumentAction(
   if (!mimeType) {
     return {
       status: "error",
-      message: `Supported formats: ${Object.values(acceptedDocumentTypes).join(", ")}.`,
+      message: `Supported formats: ${acceptedDocumentLabels.join(", ")}.`,
     };
   }
 

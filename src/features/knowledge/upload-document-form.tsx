@@ -31,13 +31,13 @@ export function UploadDocumentForm({ courseId }: { courseId: string }) {
           id="knowledge-document"
           name="document"
           type="file"
-          accept=".pdf,.docx,.txt,.md,.markdown,.csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv"
+          accept=".pdf,.docx,.txt,.md,.markdown,.csv,.ipynb,.py,.js,.ts,.jsx,.tsx,.mjs,.cjs,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv,application/x-ipynb+json,text/x-python,text/javascript,application/javascript,text/typescript,application/typescript"
           required
           disabled={pending}
           className="cursor-pointer bg-white file:mr-3 file:border-0 file:bg-transparent file:text-sm file:font-semibold file:text-slate-700"
         />
         <p className="mt-2 text-xs leading-5 text-slate-500">
-          PDF, DOCX, TXT, Markdown, or CSV. Maximum 25 MB per document.
+          PDF, DOCX, TXT, Markdown, CSV, IPYNB, PY, JS, or TS. Maximum 25 MB per document.
         </p>
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

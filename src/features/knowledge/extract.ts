@@ -6,6 +6,7 @@ import { AppError } from "@/lib/errors";
 import { normalizeExtractedText, type TextPage } from "./chunking";
 import { MAX_PDF_PAGES, type AcceptedDocumentMime } from "./constants";
 import { extractDocxText } from "./docx";
+import { extractIpynbText } from "./ipynb";
 
 export type ExtractedDocument = {
   text: string;
@@ -53,6 +54,39 @@ export async function extractDocumentText(
       metadata: {
         extractor: "docx-xml",
         partCount: result.partCount,
+      },
+    };
+  }
+
+  if (mimeType === "application/x-ipynb+json") {
+    const result = extractIpynbText(bytes);
+    return {
+      text: result.text,
+      pages: [{ text: result.text, preserveIndentation: true }],
+      metadata: {
+        extractor: "ipynb-json",
+        cellCount: result.cellCount,
+        language: result.language,
+      },
+    };
+  }
+
+  if (
+    mimeType === "text/x-python" ||
+    mimeType === "text/javascript" ||
+    mimeType === "application/javascript" ||
+    mimeType === "text/typescript" ||
+    mimeType === "application/typescript" ||
+    mimeType === "text/x-typescript"
+  ) {
+    const raw = Buffer.from(bytes).toString("utf8");
+    const text = normalizeExtractedText(raw, { preserveIndentation: true });
+    return {
+      text,
+      pages: [{ text, preserveIndentation: true }],
+      metadata: {
+        extractor: "code",
+        mimeType,
       },
     };
   }

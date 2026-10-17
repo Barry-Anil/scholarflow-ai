@@ -1,6 +1,7 @@
 export type TextPage = {
   pageNumber?: number;
   text: string;
+  preserveIndentation?: boolean;
 };
 
 export type KnowledgeChunk = {
@@ -14,7 +15,21 @@ export type KnowledgeChunk = {
 const TARGET_CHARACTERS = 1_600;
 const OVERLAP_CHARACTERS = 240;
 
-export function normalizeExtractedText(value: string) {
+export function normalizeExtractedText(
+  value: string,
+  options?: { preserveIndentation?: boolean },
+) {
+  if (options?.preserveIndentation) {
+    return value
+      .replace(/\u0000/g, "")
+      .replace(/\r\n?/g, "\n")
+      .split("\n")
+      .map((line) => line.trimEnd())
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+
   return value
     .replace(/\u0000/g, "")
     .replace(/\r\n?/g, "\n")
@@ -42,7 +57,9 @@ export function chunkExtractedPages(pages: TextPage[]): KnowledgeChunk[] {
   const chunks: KnowledgeChunk[] = [];
 
   for (const page of pages) {
-    const text = normalizeExtractedText(page.text);
+    const text = normalizeExtractedText(page.text, {
+      preserveIndentation: page.preserveIndentation,
+    });
     if (!text) continue;
 
     let start = 0;
