@@ -43,6 +43,13 @@
       "when": 1791708498456,
       "tag": "0005_omniscient_doctor_faustus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792229456000,
+      "tag": "0006_course_material_code_mimes",
+      "breakpoints": true
     }
   ]
 }

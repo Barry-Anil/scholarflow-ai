@@ -201,11 +201,30 @@ describe("live Supabase foundation", () => {
   });
 
   it("creates a private size-limited course-materials bucket", async () => {
-    const [bucket] = await sql<{ public: boolean; file_size_limit: number }[]>`
-      select public, file_size_limit::int as file_size_limit
+    const [bucket] = await sql<
+      {
+        public: boolean;
+        file_size_limit: number;
+        allowed_mime_types: string[];
+      }[]
+    >`
+      select public,
+             file_size_limit::int as file_size_limit,
+             allowed_mime_types
       from storage.buckets
       where id = 'course-materials'
     `;
-    expect(bucket).toEqual({ public: false, file_size_limit: 26_214_400 });
+    expect(bucket).toMatchObject({
+      public: false,
+      file_size_limit: 26_214_400,
+    });
+    expect(bucket?.allowed_mime_types).toEqual(
+      expect.arrayContaining([
+        "application/x-ipynb+json",
+        "text/x-python",
+        "text/javascript",
+        "text/typescript",
+      ]),
+    );
   });
 });
