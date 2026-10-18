@@ -165,7 +165,13 @@ For the local baseline:
    ollama pull nomic-embed-text
    ```
 
-3. Keep `AI_PROVIDER=ollama` and `OLLAMA_BASE_URL=http://localhost:11434`.
+3. Keep `AI_PROVIDER=ollama`, `OLLAMA_URL=http://localhost:11434`, and
+   `OLLAMA_MODEL=qwen3:8b`. The legacy `OLLAMA_BASE_URL` variable remains
+   supported when `OLLAMA_URL` is absent.
+
+   For an Ollama endpoint protected by a Cloudflare Access service token, set
+   both `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET`. The server sends
+   these credentials only to the configured Ollama chat and embedding APIs.
 
 4. Keep `AI_EMBEDDING_DIMENSIONS=768` for the database vector schema. Existing chunks can be embedded from the course knowledge page in resumable batches of 32.
 

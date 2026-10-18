@@ -14,33 +14,75 @@ const operationsEnvSchema = z.object({
   JOB_WORKER_SECRET: z.string().min(32),
 });
 
-const aiEnvSchema = z.object({
-  AI_PROVIDER: z.literal("ollama").default("ollama"),
-  AI_MODEL_WRITER: z.string().min(1).default("qwen3:8b"),
-  AI_MODEL_RESEARCHER: z.string().min(1).default("qwen3:8b"),
-  AI_MODEL_REVIEWER: z.string().min(1).default("qwen3:8b"),
-  AI_EMBEDDING_PROVIDER: z.literal("ollama").default("ollama"),
-  AI_EMBEDDING_MODEL: z.string().min(1).default("nomic-embed-text"),
-  AI_EMBEDDING_DIMENSIONS: z.coerce.number().int().min(1).default(768),
-  OLLAMA_BASE_URL: z.url().default("http://localhost:11434"),
-  CROSSREF_CONTACT_EMAIL: z.preprocess(
-    (value) => (value === "" ? undefined : value),
-    z.email().optional(),
-  ),
-  AI_REQUEST_TIMEOUT_MS: z.coerce
-    .number()
-    .int()
-    .min(5_000)
-    .max(180_000)
-    .default(90_000),
-  DAILY_AI_REQUEST_LIMIT: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(1_000)
-    .default(100),
-  MAX_AGENT_ITERATIONS: z.coerce.number().int().min(1).max(20).default(5),
-});
+const optionalSecret = z.preprocess(
+  (value) => (value === "" ? undefined : value),
+  z.string().min(1).optional(),
+);
+
+const cloudflareAccessEnvSchema = z
+  .object({
+    CF_ACCESS_CLIENT_ID: optionalSecret,
+    CF_ACCESS_CLIENT_SECRET: optionalSecret,
+  })
+  .superRefine((value, context) => {
+    if (
+      Boolean(value.CF_ACCESS_CLIENT_ID) ===
+      Boolean(value.CF_ACCESS_CLIENT_SECRET)
+    )
+      return;
+    context.addIssue({
+      code: "custom",
+      message:
+        "CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET must be configured together.",
+      path: [
+        value.CF_ACCESS_CLIENT_ID
+          ? "CF_ACCESS_CLIENT_SECRET"
+          : "CF_ACCESS_CLIENT_ID",
+      ],
+    });
+  });
+
+const aiEnvSchema = z
+  .object({
+    AI_PROVIDER: z.literal("ollama").default("ollama"),
+    OLLAMA_MODEL: z.string().min(1).optional(),
+    AI_MODEL_WRITER: z.string().min(1).optional(),
+    AI_MODEL_RESEARCHER: z.string().min(1).optional(),
+    AI_MODEL_REVIEWER: z.string().min(1).optional(),
+    AI_EMBEDDING_PROVIDER: z.literal("ollama").default("ollama"),
+    AI_EMBEDDING_MODEL: z.string().min(1).default("nomic-embed-text"),
+    AI_EMBEDDING_DIMENSIONS: z.coerce.number().int().min(1).default(768),
+    OLLAMA_URL: z.url().optional(),
+    OLLAMA_BASE_URL: z.url().optional(),
+    CROSSREF_CONTACT_EMAIL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.email().optional(),
+    ),
+    AI_REQUEST_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(180_000)
+      .default(90_000),
+    DAILY_AI_REQUEST_LIMIT: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1_000)
+      .default(100),
+    MAX_AGENT_ITERATIONS: z.coerce.number().int().min(1).max(20).default(5),
+  })
+  .transform((value) => {
+    const model = value.OLLAMA_MODEL ?? "qwen3:8b";
+    return {
+      ...value,
+      AI_MODEL_WRITER: value.AI_MODEL_WRITER ?? model,
+      AI_MODEL_RESEARCHER: value.AI_MODEL_RESEARCHER ?? model,
+      AI_MODEL_REVIEWER: value.AI_MODEL_REVIEWER ?? model,
+      OLLAMA_BASE_URL:
+        value.OLLAMA_URL ?? value.OLLAMA_BASE_URL ?? "http://localhost:11434",
+    };
+  });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 export type AiEnv = z.infer<typeof aiEnvSchema>;
@@ -63,20 +105,36 @@ export function getServerEnv(): ServerEnv {
 }
 
 export function getAiEnv(): AiEnv {
+  getOllamaAccessCredentials();
   return aiEnvSchema.parse({
     AI_PROVIDER: process.env.AI_PROVIDER,
+    OLLAMA_MODEL: process.env.OLLAMA_MODEL,
     AI_MODEL_WRITER: process.env.AI_MODEL_WRITER,
     AI_MODEL_RESEARCHER: process.env.AI_MODEL_RESEARCHER,
     AI_MODEL_REVIEWER: process.env.AI_MODEL_REVIEWER,
     AI_EMBEDDING_PROVIDER: process.env.AI_EMBEDDING_PROVIDER,
     AI_EMBEDDING_MODEL: process.env.AI_EMBEDDING_MODEL,
     AI_EMBEDDING_DIMENSIONS: process.env.AI_EMBEDDING_DIMENSIONS,
+    OLLAMA_URL: process.env.OLLAMA_URL,
     OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
     CROSSREF_CONTACT_EMAIL: process.env.CROSSREF_CONTACT_EMAIL,
     AI_REQUEST_TIMEOUT_MS: process.env.AI_REQUEST_TIMEOUT_MS,
     DAILY_AI_REQUEST_LIMIT: process.env.DAILY_AI_REQUEST_LIMIT,
     MAX_AGENT_ITERATIONS: process.env.MAX_AGENT_ITERATIONS,
   });
+}
+
+export function getOllamaAccessCredentials() {
+  const value = cloudflareAccessEnvSchema.parse({
+    CF_ACCESS_CLIENT_ID: process.env.CF_ACCESS_CLIENT_ID,
+    CF_ACCESS_CLIENT_SECRET: process.env.CF_ACCESS_CLIENT_SECRET,
+  });
+  if (!value.CF_ACCESS_CLIENT_ID || !value.CF_ACCESS_CLIENT_SECRET)
+    return undefined;
+  return {
+    clientId: value.CF_ACCESS_CLIENT_ID,
+    clientSecret: value.CF_ACCESS_CLIENT_SECRET,
+  };
 }
 
 export function getOperationsEnv() {

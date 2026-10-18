@@ -6,7 +6,7 @@ import { OllamaEmbeddingProvider } from "@/lib/ai/ollama-embeddings";
 import { requireCourseAccess } from "@/lib/auth/course-access";
 import { getDatabase } from "@/lib/db";
 import { documentChunks, processingJobs } from "@/lib/db/schema";
-import { getAiEnv } from "@/lib/env/server";
+import { getAiEnv, getOllamaAccessCredentials } from "@/lib/env/server";
 import { AppError, safeErrorMessage } from "@/lib/errors";
 import { EMBEDDING_JOB_TYPE } from "./constants";
 
@@ -24,6 +24,7 @@ export async function generateEmbeddings(input: string[]) {
     env.OLLAMA_BASE_URL,
     env.AI_REQUEST_TIMEOUT_MS,
     env.AI_EMBEDDING_DIMENSIONS,
+    getOllamaAccessCredentials(),
   );
   return provider.embed(env.AI_EMBEDDING_MODEL, input);
 }

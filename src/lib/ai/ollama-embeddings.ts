@@ -3,6 +3,10 @@ import "server-only";
 import { z } from "zod";
 
 import { AppError } from "@/lib/errors";
+import {
+  createOllamaRequestHeaders,
+  type OllamaAccessCredentials,
+} from "./ollama-access";
 
 const embeddingResponseSchema = z.object({
   model: z.string().min(1),
@@ -21,8 +25,14 @@ export class OllamaEmbeddingProvider {
   readonly #baseUrl: URL;
   readonly #timeoutMs: number;
   readonly #dimensions: number;
+  readonly #headers: Headers;
 
-  constructor(baseUrl: string, timeoutMs: number, dimensions = 768) {
+  constructor(
+    baseUrl: string,
+    timeoutMs: number,
+    dimensions = 768,
+    accessCredentials?: OllamaAccessCredentials,
+  ) {
     const parsed = new URL(baseUrl);
     if (
       !["http:", "https:"].includes(parsed.protocol) ||
@@ -37,6 +47,7 @@ export class OllamaEmbeddingProvider {
     this.#baseUrl = parsed;
     this.#timeoutMs = timeoutMs;
     this.#dimensions = dimensions;
+    this.#headers = createOllamaRequestHeaders(accessCredentials);
   }
 
   async embed(model: string, input: string[]): Promise<EmbeddingResult> {
@@ -51,7 +62,7 @@ export class OllamaEmbeddingProvider {
     try {
       response = await fetch(new URL("/api/embed", this.#baseUrl), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this.#headers,
         body: JSON.stringify({
           model,
           input,

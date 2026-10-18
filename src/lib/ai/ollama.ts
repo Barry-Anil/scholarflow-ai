@@ -3,6 +3,10 @@ import "server-only";
 import { z } from "zod";
 
 import { AppError } from "@/lib/errors";
+import {
+  createOllamaRequestHeaders,
+  type OllamaAccessCredentials,
+} from "./ollama-access";
 import type {
   StructuredAiProvider,
   StructuredGenerationRequest,
@@ -18,8 +22,13 @@ const ollamaResponseSchema = z.object({
 export class OllamaProvider implements StructuredAiProvider {
   readonly #baseUrl: URL;
   readonly #timeoutMs: number;
+  readonly #headers: Headers;
 
-  constructor(baseUrl: string, timeoutMs: number) {
+  constructor(
+    baseUrl: string,
+    timeoutMs: number,
+    accessCredentials?: OllamaAccessCredentials,
+  ) {
     const parsed = new URL(baseUrl);
     if (
       !["http:", "https:"].includes(parsed.protocol) ||
@@ -33,6 +42,7 @@ export class OllamaProvider implements StructuredAiProvider {
     }
     this.#baseUrl = parsed;
     this.#timeoutMs = timeoutMs;
+    this.#headers = createOllamaRequestHeaders(accessCredentials);
   }
 
   async generateObject<T>(request: StructuredGenerationRequest<T>) {
@@ -41,7 +51,7 @@ export class OllamaProvider implements StructuredAiProvider {
     try {
       response = await fetch(new URL("/api/chat", this.#baseUrl), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: this.#headers,
         body: JSON.stringify({
           model: request.model,
           messages: request.messages,

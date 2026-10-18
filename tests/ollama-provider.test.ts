@@ -19,7 +19,10 @@ describe("Ollama structured provider", () => {
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const provider = new OllamaProvider("http://localhost:11434", 5_000);
+    const provider = new OllamaProvider("http://localhost:11434", 5_000, {
+      clientId: "access-client",
+      clientSecret: "access-secret",
+    });
     const schema = z.object({ answer: z.string() });
 
     const result = await provider.generateObject({
@@ -30,7 +33,10 @@ describe("Ollama structured provider", () => {
 
     expect(result.value).toEqual({ answer: "grounded" });
     const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = new Headers(init.headers);
     const body = JSON.parse(String(init.body));
+    expect(headers.get("CF-Access-Client-Id")).toBe("access-client");
+    expect(headers.get("CF-Access-Client-Secret")).toBe("access-secret");
     expect(body).toMatchObject({
       model: "test-model",
       stream: false,

@@ -22,7 +22,7 @@ import {
   rubricCriteria,
   usageRecords,
 } from "@/lib/db/schema";
-import { getAiEnv } from "@/lib/env/server";
+import { getAiEnv, getOllamaAccessCredentials } from "@/lib/env/server";
 import { AppError } from "@/lib/errors";
 import { acceptedFindingIdsForRevision, REVISION_JOB_TYPE } from "./contracts";
 import { reviseQuestionFromFindings } from "./reviser";
@@ -387,7 +387,11 @@ export async function processRevisionQuestionJob(
     return;
   }
   const revised = await reviseQuestionFromFindings(
-    new OllamaProvider(env.OLLAMA_BASE_URL, env.AI_REQUEST_TIMEOUT_MS),
+    new OllamaProvider(
+      env.OLLAMA_BASE_URL,
+      env.AI_REQUEST_TIMEOUT_MS,
+      getOllamaAccessCredentials(),
+    ),
     env.AI_MODEL_WRITER,
     {
       question: question.prompt,

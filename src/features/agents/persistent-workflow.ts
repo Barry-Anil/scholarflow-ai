@@ -23,7 +23,7 @@ import {
   rubricCriteria,
   usageRecords,
 } from "@/lib/db/schema";
-import { getAiEnv } from "@/lib/env/server";
+import { getAiEnv, getOllamaAccessCredentials } from "@/lib/env/server";
 import { AppError, errorFingerprint } from "@/lib/errors";
 import { logger } from "@/lib/logging/logger";
 import { searchCrossref } from "@/lib/research/crossref";
@@ -880,7 +880,11 @@ async function processDraftQuestion(
   } | null = null;
   if (sources.length) {
     const drafted = await draftQuestionWithEvidence(
-      new OllamaProvider(env.OLLAMA_BASE_URL, env.AI_REQUEST_TIMEOUT_MS),
+      new OllamaProvider(
+        env.OLLAMA_BASE_URL,
+        env.AI_REQUEST_TIMEOUT_MS,
+        getOllamaAccessCredentials(),
+      ),
       env.AI_MODEL_WRITER,
       {
         prompt: question.prompt,

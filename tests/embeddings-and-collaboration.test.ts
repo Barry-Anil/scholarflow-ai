@@ -24,6 +24,7 @@ describe("semantic retrieval", () => {
       "http://localhost:11434",
       5_000,
       3,
+      { clientId: "access-client", clientSecret: "access-secret" },
     );
     const result = await provider.embed("nomic-embed-text", [
       "grounded evidence",
@@ -31,6 +32,10 @@ describe("semantic retrieval", () => {
 
     expect(result.embeddings).toEqual([[1, 2, 3]]);
     expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/api/embed");
+    const [, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    const headers = new Headers(init.headers);
+    expect(headers.get("CF-Access-Client-Id")).toBe("access-client");
+    expect(headers.get("CF-Access-Client-Secret")).toBe("access-secret");
   });
 
   it("promotes evidence found by both keyword and semantic ranking", () => {

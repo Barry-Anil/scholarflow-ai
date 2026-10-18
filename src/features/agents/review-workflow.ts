@@ -21,7 +21,7 @@ import {
   rubricCriteria,
   usageRecords,
 } from "@/lib/db/schema";
-import { getAiEnv } from "@/lib/env/server";
+import { getAiEnv, getOllamaAccessCredentials } from "@/lib/env/server";
 import { AppError } from "@/lib/errors";
 import { REVIEW_JOB_TYPE } from "./contracts";
 import { reviewQuestionIndependently } from "./reviewer";
@@ -299,7 +299,11 @@ export async function processReviewQuestionJob(
     throw new AppError("INVALID_INPUT", "The review context is incomplete.");
   }
   const result = await reviewQuestionIndependently(
-    new OllamaProvider(env.OLLAMA_BASE_URL, env.AI_REQUEST_TIMEOUT_MS),
+    new OllamaProvider(
+      env.OLLAMA_BASE_URL,
+      env.AI_REQUEST_TIMEOUT_MS,
+      getOllamaAccessCredentials(),
+    ),
     env.AI_MODEL_REVIEWER,
     {
       question: question.prompt,
