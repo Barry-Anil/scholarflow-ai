@@ -6,8 +6,8 @@ import {
   BookOpenCheck,
   CalendarDays,
   Check,
-  CheckCircle2,
   FileCheck2,
+  FileText,
   ExternalLink,
   History,
   ListChecks,
@@ -41,6 +41,11 @@ import {
 } from "@/features/agents/contracts";
 import { getAssignmentWorkspace } from "@/features/assignments/data";
 import { DraftEditor } from "@/features/assignments/draft-editor";
+import {
+  WorkspaceDrawerManager,
+  DrawerTriggerButton,
+  RubricSidebarCard,
+} from "@/features/assignments/workspace-drawer";
 import { ApprovalExportPanel } from "@/features/exports/approval-export-panel";
 import { evaluateApprovalReadiness } from "@/features/exports/approval";
 import {
@@ -188,9 +193,15 @@ async function WorkspaceContent({ params, searchParams }: PageProps) {
                   {data.questions.length} question
                   {data.questions.length === 1 ? "" : "s"}
                 </StatusPill>
-                <StatusPill icon={BookOpenCheck}>
-                  {data.criteria.length} rubric criteria
-                </StatusPill>
+                <DrawerTriggerButton
+                  tab="rubric"
+                  variant="ghost"
+                  className="h-auto p-0 hover:bg-transparent"
+                >
+                  <StatusPill icon={BookOpenCheck}>
+                    {data.criteria.length} rubric criteria
+                  </StatusPill>
+                </DrawerTriggerButton>
                 <StatusPill icon={History}>
                   {data.latestDraft
                     ? `Draft version ${data.latestDraft.version}`
@@ -218,6 +229,23 @@ async function WorkspaceContent({ params, searchParams }: PageProps) {
             </div>
           </div>
         </div>
+
+        <WorkspaceDrawerManager
+          courseId={courseId}
+          assignmentId={assignmentId}
+          assignmentTitle={data.assignment.title}
+          briefMarkdown={data.assignment.briefMarkdown}
+          questions={data.questions}
+          criteria={data.criteria}
+          answers={data.answers}
+          hasDraft={Boolean(data.latestDraft)}
+          draftVersion={data.latestDraft?.version ?? null}
+          reviewItems={data.reviewItems}
+          previousReviewItems={data.previousReviewItems}
+          hasReviewReport={Boolean(data.latestReviewReport)}
+          hasPreviousReviewReport={Boolean(data.previousReviewReport)}
+          events={data.events}
+        />
 
         <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
           <div>
@@ -570,49 +598,51 @@ async function WorkspaceContent({ params, searchParams }: PageProps) {
 
             <Card>
               <CardHeader>
-                <CardTitle>Marking rubric</CardTitle>
-                <CardDescription>
-                  Keep each answer aligned with how it will be assessed.
-                </CardDescription>
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <CardTitle>Marking rubric</CardTitle>
+                    <CardDescription>
+                      Keep each answer aligned with how it will be assessed.
+                    </CardDescription>
+                  </div>
+                  <DrawerTriggerButton
+                    tab="rubric"
+                    variant="ghost"
+                    size="sm"
+                    className="text-teal-700 hover:text-teal-900"
+                  >
+                    <ExternalLink className="size-3.5" /> Scale Drawer
+                  </DrawerTriggerButton>
+                </div>
               </CardHeader>
               <CardContent>
-                {data.criteria.length ? (
-                  <ol className="space-y-4">
-                    {data.criteria.map((criterion) => (
-                      <li key={criterion.id} className="flex gap-3">
-                        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-teal-600" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold text-slate-800">
-                              {criterion.title}
-                            </p>
-                            {criterion.weight !== null && (
-                              <span className="shrink-0 text-xs font-semibold text-teal-700">
-                                {criterion.weight}%
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-1 text-xs leading-5 text-slate-500">
-                            {criterion.description}
-                          </p>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="rounded-xl bg-slate-50 p-4 text-sm leading-6 text-slate-500">
-                    No rubric was supplied. Review the original brief carefully
-                    before submission.
-                  </p>
-                )}
+                <RubricSidebarCard
+                  criteria={data.criteria}
+                  hasDraft={Boolean(data.latestDraft)}
+                  answers={data.answers}
+                  reviewItems={data.reviewItems}
+                  previousReviewItems={data.previousReviewItems}
+                  hasReviewReport={Boolean(data.latestReviewReport)}
+                  hasPreviousReviewReport={Boolean(data.previousReviewReport)}
+                />
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Activity className="size-5 text-teal-600" /> Agent activity
-                </CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="size-5 text-teal-600" /> Agent activity
+                  </CardTitle>
+                  <DrawerTriggerButton
+                    tab="activity"
+                    variant="ghost"
+                    size="sm"
+                    className="text-teal-700 hover:text-teal-900"
+                  >
+                    <ExternalLink className="size-3.5" /> Expand
+                  </DrawerTriggerButton>
+                </div>
               </CardHeader>
               <CardContent>
                 {data.events.length ? (
@@ -636,27 +666,56 @@ async function WorkspaceContent({ params, searchParams }: PageProps) {
                     No agent operations have run yet.
                   </p>
                 )}
+                <DrawerTriggerButton
+                  tab="activity"
+                  variant="secondary"
+                  size="sm"
+                  className="mt-4 w-full"
+                >
+                  <Activity className="size-4 text-teal-600" />
+                  Open full activity drawer
+                </DrawerTriggerButton>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Original brief</CardTitle>
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle>Original brief</CardTitle>
+                  <DrawerTriggerButton
+                    tab="brief"
+                    variant="ghost"
+                    size="sm"
+                    className="text-teal-700 hover:text-teal-900"
+                  >
+                    <ExternalLink className="size-3.5" /> Expand
+                  </DrawerTriggerButton>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="max-h-80 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-slate-600">
                   {data.assignment.briefMarkdown}
                 </div>
-                <Button
-                  asChild
-                  variant="secondary"
-                  size="sm"
-                  className="mt-5 w-full"
-                >
-                  <Link href={`/dashboard/courses/${courseId}/knowledge`}>
-                    <ExternalLink className="size-4" /> Open course evidence
-                  </Link>
-                </Button>
+                <div className="mt-5 grid grid-cols-2 gap-2">
+                  <Button
+                    asChild
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                  >
+                    <Link href={`/dashboard/courses/${courseId}/knowledge`}>
+                      <ExternalLink className="size-4" /> Evidence
+                    </Link>
+                  </Button>
+                  <DrawerTriggerButton
+                    tab="brief"
+                    variant="secondary"
+                    size="sm"
+                    className="w-full"
+                  >
+                    <FileText className="size-4 text-teal-600" /> Brief drawer
+                  </DrawerTriggerButton>
+                </div>
               </CardContent>
             </Card>
           </aside>

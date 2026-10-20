@@ -290,6 +290,7 @@ export const getAssignmentWorkspace = cache(
       ? await db
           .select({
             id: reviewFindings.id,
+            rubricCriterionId: reviewFindings.rubricCriterionId,
             severity: reviewFindings.severity,
             required: reviewFindings.required,
             title: reviewFindings.title,
@@ -304,6 +305,35 @@ export const getAssignmentWorkspace = cache(
           .from(reviewFindings)
           .where(eq(reviewFindings.reportId, latestReviewReport.id))
           .orderBy(reviewFindings.createdAt)
+      : [];
+    const allReviewReports = await db
+      .select({
+        id: reviewReports.id,
+        draftId: reviewReports.draftId,
+        overallStatus: reviewReports.overallStatus,
+        estimatedScore: reviewReports.estimatedScore,
+        createdAt: reviewReports.createdAt,
+      })
+      .from(reviewReports)
+      .where(eq(reviewReports.assignmentId, assignmentId))
+      .orderBy(desc(reviewReports.createdAt))
+      .limit(5);
+    const previousReviewReport =
+      allReviewReports.find(
+        (report) => report.id !== latestReviewReport?.id,
+      ) ?? null;
+    const previousReviewItems = previousReviewReport
+      ? await db
+          .select({
+            id: reviewFindings.id,
+            rubricCriterionId: reviewFindings.rubricCriterionId,
+            severity: reviewFindings.severity,
+            title: reviewFindings.title,
+            recommendedCorrection: reviewFindings.recommendedCorrection,
+            resolution: reviewFindings.resolution,
+          })
+          .from(reviewFindings)
+          .where(eq(reviewFindings.reportId, previousReviewReport.id))
       : [];
     const approval = latestDraft
       ? await db
@@ -353,6 +383,8 @@ export const getAssignmentWorkspace = cache(
       citations,
       latestReviewReport,
       reviewItems,
+      previousReviewReport,
+      previousReviewItems,
       approval,
       revisions,
       role: access.role,
