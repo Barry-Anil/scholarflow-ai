@@ -305,3 +305,22 @@ Last updated: 2026-10-11
 | Accent usage     | Teal indicates hybrid-ready coverage; amber indicates partial coverage/fallback mode |
 
 **Pattern notes:** Embedding generation is presented as an optional, resumable enhancement to always-available keyword search. Coverage uses real embedded/total counts, and action copy states the bounded batch size. Never imply semantic search is active when the provider failed; show the keyword fallback mode explicitly.
+
+### Agent activity tracker
+
+Files: `src/components/kokonutui/currency-transfer.tsx`, `src/features/agents/agent-activity-tracker.tsx`, `src/app/(workspace)/dashboard/activity/page.tsx`
+Last updated: 2026-10-20
+
+| Property         | Class                                                                                  |
+| ---------------- | -------------------------------------------------------------------------------------- |
+| Background       | `bg-white` card; `bg-teal-50` agent mark; semantic slate/sky/emerald/rose status pills |
+| Border           | `border border-slate-200`; progress rails use `bg-slate-200`                           |
+| Border radius    | `rounded-2xl` card; `rounded-xl` agent mark; `rounded-full` status pills               |
+| Text — primary   | `text-slate-950 font-semibold`; step text uses `text-slate-900 text-sm`                |
+| Text — secondary | `text-slate-500 text-xs`; pending steps use `text-slate-400`                           |
+| Spacing          | card `p-5`; tracker grid `gap-4`; stages use `gap-3` and `pb-4`                        |
+| Hover state      | assignment link uses `hover:text-teal-800`; reference retains the Kokonut copy state   |
+| Shadow           | `shadow-sm`                                                                            |
+| Accent usage     | Teal identifies agents/links; sky active; emerald completed; rose failed/cancelled     |
+
+**Pattern notes:** This tracker adapts Kokonut UI's transfer progress rail without carrying financial language into the agent domain. Always show Agent A, B, and C in that order, backed by the latest persisted run for reviewer, student, and researcher roles. Stage completion must reflect database state rather than simulated progress. Poll every five seconds only while a run is queued or running, then stop automatically. Keep the detailed history below the cards, preserve assignment links, and never expose run input/output content in the summary cards or polling response.

@@ -123,6 +123,7 @@ export const getActivityHub = cache(() =>
         provider: agentRuns.provider,
         model: agentRuns.model,
         createdAt: agentRuns.createdAt,
+        startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,
         assignmentId: assignments.id,
         assignmentTitle: assignments.title,

@@ -15,6 +15,11 @@ import {
   WorkspaceEmptyState,
   WorkspacePageHeader,
 } from "@/components/workspace/hub-ui";
+import { AgentActivityTracker } from "@/features/agents/agent-activity-tracker";
+import {
+  activityAgents,
+  type ActivityRun,
+} from "@/features/agents/activity-model";
 import { getActivityHub } from "@/features/workspace/data";
 import {
   formatWorkspaceDate,
@@ -32,6 +37,12 @@ export default function ActivityHubPage() {
 async function ActivityContent() {
   await connection();
   const runs = await getActivityHub();
+  const serializedRuns: ActivityRun[] = runs.map((run) => ({
+    ...run,
+    createdAt: run.createdAt.toISOString(),
+    startedAt: run.startedAt?.toISOString() ?? null,
+    completedAt: run.completedAt?.toISOString() ?? null,
+  }));
 
   return (
     <main className="p-5 lg:p-8">
@@ -41,6 +52,8 @@ async function ActivityContent() {
           title="Agent activity"
           description="Track recent research, drafting, reviewing, and revision runs across every assignment."
         />
+
+        <AgentActivityTracker initialRuns={serializedRuns} />
 
         <Card>
           <CardHeader>
@@ -64,15 +77,17 @@ async function ActivityContent() {
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold capitalize text-slate-900 group-hover:text-teal-700">
-                        Agent {run.agent}
+                        {activityAgents.find(
+                          (profile) => profile.agent === run.agent,
+                        )?.label ?? "System agent"}
                       </p>
                       <p className="mt-1 truncate text-sm text-slate-600">
                         {run.assignmentTitle}
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
-                        {run.courseCode || run.courseTitle} �{" "}
+                        {run.courseCode || run.courseTitle} ·{" "}
                         {formatWorkspaceDate(run.createdAt)}
-                        {run.model ? ` � ${run.model}` : ""}
+                        {run.model ? ` · ${run.model}` : ""}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
