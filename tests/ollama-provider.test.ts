@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { OllamaProvider } from "@/lib/ai/ollama";
+import { AppError } from "@/lib/errors";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -45,9 +46,49 @@ describe("Ollama structured provider", () => {
     expect(body.format).toMatchObject({ type: "object" });
   });
 
-  it("returns an actionable error when the local service is unreachable", async () => {
+  it("classifies a connection failure without exposing request data", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
     const provider = new OllamaProvider("http://localhost:11434", 5_000);
+
+    const result = provider.generateObject({
+      model: "missing",
+      schema: z.object({ answer: z.string() }),
+      messages: [{ role: "user", content: "Draft" }],
+    });
+
+    await expect(result).rejects.toMatchObject({
+      code: "AI_UNAVAILABLE",
+      status: 503,
+    });
+    await expect(result).rejects.toThrow(/could not connect/);
+  });
+
+  it("distinguishes request timeouts from connection failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new DOMException("timed out", "TimeoutError")),
+    );
+    const provider = new OllamaProvider("https://ollama.example.com", 120_000);
+
+    const result = provider.generateObject({
+      model: "slow-model",
+      schema: z.object({ answer: z.string() }),
+      messages: [{ role: "user", content: "Draft" }],
+    });
+
+    await expect(result).rejects.toMatchObject({
+      code: "AI_TIMEOUT",
+      status: 504,
+    });
+    await expect(result).rejects.toThrow(/120 seconds/);
+  });
+
+  it("reports Cloudflare Access rejection separately", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(new Response("Forbidden", { status: 403 })),
+    );
+    const provider = new OllamaProvider("https://ollama.example.com", 5_000);
 
     await expect(
       provider.generateObject({
@@ -55,6 +96,30 @@ describe("Ollama structured provider", () => {
         schema: z.object({ answer: z.string() }),
         messages: [{ role: "user", content: "Draft" }],
       }),
-    ).rejects.toThrow(/Ollama is not reachable/);
+    ).rejects.toMatchObject({
+      code: "AI_AUTHORIZATION_FAILED",
+      status: 403,
+    } satisfies Partial<AppError>);
+  });
+
+  it("reports invalid structured JSON separately", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          model: "test-model",
+          message: { content: "not-json" },
+        }),
+      ),
+    );
+    const provider = new OllamaProvider("https://ollama.example.com", 5_000);
+
+    await expect(
+      provider.generateObject({
+        model: "test-model",
+        schema: z.object({ answer: z.string() }),
+        messages: [{ role: "user", content: "Draft" }],
+      }),
+    ).rejects.toMatchObject({ code: "AI_RESPONSE_INVALID" });
   });
 });

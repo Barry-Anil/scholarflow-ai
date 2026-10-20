@@ -9,6 +9,7 @@ const keys = [
   "AI_MODEL_WRITER",
   "AI_MODEL_RESEARCHER",
   "AI_MODEL_REVIEWER",
+  "AI_REQUEST_TIMEOUT_MS",
   "CF_ACCESS_CLIENT_ID",
   "CF_ACCESS_CLIENT_SECRET",
 ] as const;
@@ -47,6 +48,7 @@ describe("Ollama configuration", () => {
       AI_MODEL_WRITER: "qwen3:8b",
       AI_MODEL_RESEARCHER: "qwen3:8b",
       AI_MODEL_REVIEWER: "qwen3:8b",
+      AI_REQUEST_TIMEOUT_MS: 120_000,
     });
   });
 

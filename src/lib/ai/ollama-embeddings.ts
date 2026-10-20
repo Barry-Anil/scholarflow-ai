@@ -7,6 +7,13 @@ import {
   createOllamaRequestHeaders,
   type OllamaAccessCredentials,
 } from "./ollama-access";
+import {
+  logOllamaCompleted,
+  ollamaFetchError,
+  ollamaHttpError,
+  ollamaInvalidResponse,
+  type OllamaRequestContext,
+} from "./ollama-errors";
 
 const embeddingResponseSchema = z.object({
   model: z.string().min(1),
@@ -58,6 +65,13 @@ export class OllamaEmbeddingProvider {
       );
     }
     const startedAt = performance.now();
+    const context: OllamaRequestContext = {
+      operation: "embed",
+      hostname: this.#baseUrl.hostname,
+      model,
+      timeoutMs: this.#timeoutMs,
+      startedAt,
+    };
     let response: Response;
     try {
       response = await fetch(new URL("/api/embed", this.#baseUrl), {
@@ -74,23 +88,24 @@ export class OllamaEmbeddingProvider {
         signal: AbortSignal.timeout(this.#timeoutMs),
       });
     } catch (error) {
-      throw new AppError(
-        "UNEXPECTED_ERROR",
-        "Ollama embeddings are unavailable. Keyword retrieval remains active.",
-        { cause: error },
-      );
+      throw ollamaFetchError(error, context);
     }
     if (!response.ok) {
-      throw new AppError(
-        "UNEXPECTED_ERROR",
-        response.status === 404
-          ? "The configured Ollama embedding model is unavailable. Pull the model and retry."
-          : "Ollama could not generate embeddings.",
-        { status: response.status },
-      );
+      throw ollamaHttpError(response, context);
     }
 
-    const payload = embeddingResponseSchema.safeParse(await response.json());
+    let responseBody: unknown;
+    try {
+      responseBody = await response.json();
+    } catch (error) {
+      throw ollamaInvalidResponse(
+        context,
+        "invalid_json",
+        error,
+        response.status,
+      );
+    }
+    const payload = embeddingResponseSchema.safeParse(responseBody);
     if (
       !payload.success ||
       payload.data.embeddings.length !== input.length ||
@@ -98,12 +113,15 @@ export class OllamaEmbeddingProvider {
         (embedding) => embedding.length !== this.#dimensions,
       )
     ) {
-      throw new AppError(
-        "UNEXPECTED_ERROR",
-        `Ollama must return one ${this.#dimensions}-dimension embedding per input.`,
+      throw ollamaInvalidResponse(
+        context,
+        "invalid_payload",
+        undefined,
+        response.status,
       );
     }
 
+    logOllamaCompleted(context, response.status);
     return {
       model: payload.data.model,
       embeddings: payload.data.embeddings,

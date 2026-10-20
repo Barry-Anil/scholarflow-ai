@@ -63,7 +63,7 @@ const aiEnvSchema = z
       .int()
       .min(5_000)
       .max(180_000)
-      .default(90_000),
+      .default(120_000),
     DAILY_AI_REQUEST_LIMIT: z.coerce
       .number()
       .int()

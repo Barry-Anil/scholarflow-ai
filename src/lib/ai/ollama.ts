@@ -7,6 +7,13 @@ import {
   createOllamaRequestHeaders,
   type OllamaAccessCredentials,
 } from "./ollama-access";
+import {
+  logOllamaCompleted,
+  ollamaFetchError,
+  ollamaHttpError,
+  ollamaInvalidResponse,
+  type OllamaRequestContext,
+} from "./ollama-errors";
 import type {
   StructuredAiProvider,
   StructuredGenerationRequest,
@@ -47,6 +54,13 @@ export class OllamaProvider implements StructuredAiProvider {
 
   async generateObject<T>(request: StructuredGenerationRequest<T>) {
     const startedAt = performance.now();
+    const context: OllamaRequestContext = {
+      operation: "chat",
+      hostname: this.#baseUrl.hostname,
+      model: request.model,
+      timeoutMs: this.#timeoutMs,
+      startedAt,
+    };
     let response: Response;
     try {
       response = await fetch(new URL("/api/chat", this.#baseUrl), {
@@ -64,46 +78,53 @@ export class OllamaProvider implements StructuredAiProvider {
         signal: AbortSignal.timeout(this.#timeoutMs),
       });
     } catch (error) {
-      throw new AppError(
-        "UNEXPECTED_ERROR",
-        "Ollama is not reachable. Start Ollama and confirm the configured model is installed.",
-        { cause: error },
-      );
+      throw ollamaFetchError(error, context);
     }
     if (!response.ok) {
-      throw new AppError(
-        "UNEXPECTED_ERROR",
-        response.status === 404
-          ? "The configured Ollama model is unavailable. Pull the model and retry."
-          : "Ollama could not complete the structured AI request.",
-        { status: response.status },
-      );
+      throw ollamaHttpError(response, context);
     }
 
-    const payload = ollamaResponseSchema.safeParse(await response.json());
+    let responseBody: unknown;
+    try {
+      responseBody = await response.json();
+    } catch (error) {
+      throw ollamaInvalidResponse(
+        context,
+        "invalid_json",
+        error,
+        response.status,
+      );
+    }
+    const payload = ollamaResponseSchema.safeParse(responseBody);
     if (!payload.success) {
-      throw new AppError(
-        "UNEXPECTED_ERROR",
-        "Ollama returned an unexpected response.",
+      throw ollamaInvalidResponse(
+        context,
+        "invalid_payload",
+        undefined,
+        response.status,
       );
     }
     let parsedJson: unknown;
     try {
       parsedJson = JSON.parse(payload.data.message.content);
     } catch (error) {
-      throw new AppError(
-        "UNEXPECTED_ERROR",
-        "Ollama returned invalid structured output.",
-        { cause: error },
+      throw ollamaInvalidResponse(
+        context,
+        "invalid_structured_output",
+        error,
+        response.status,
       );
     }
     const value = request.schema.safeParse(parsedJson);
     if (!value.success) {
-      throw new AppError(
-        "UNEXPECTED_ERROR",
-        "Ollama returned an incomplete draft. Retry or choose another model.",
+      throw ollamaInvalidResponse(
+        context,
+        "invalid_structured_output",
+        undefined,
+        response.status,
       );
     }
+    logOllamaCompleted(context, response.status);
     return {
       value: value.data,
       provider: "ollama",

@@ -10,6 +10,8 @@ import { enforceUserRateLimit } from "@/lib/security/rate-limit";
 
 const jobIdSchema = z.uuid();
 
+export const maxDuration = 240;
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ jobId: string }> },
