@@ -1,0 +1,25 @@
+[Unit]
+Description=ScholarFlow durable AI agent worker
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scholarflow
+Group=scholarflow
+WorkingDirectory=/opt/scholarflow-ai
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/scholarflow/agent-worker.env
+ExecStart=/usr/bin/npm run worker:agent
+Restart=always
+RestartSec=5
+TimeoutStopSec=45
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/opt/scholarflow-ai
+
+[Install]
+WantedBy=multi-user.target

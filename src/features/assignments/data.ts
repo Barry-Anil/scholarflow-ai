@@ -319,9 +319,8 @@ export const getAssignmentWorkspace = cache(
       .orderBy(desc(reviewReports.createdAt))
       .limit(5);
     const previousReviewReport =
-      allReviewReports.find(
-        (report) => report.id !== latestReviewReport?.id,
-      ) ?? null;
+      allReviewReports.find((report) => report.id !== latestReviewReport?.id) ??
+      null;
     const previousReviewItems = previousReviewReport
       ? await db
           .select({

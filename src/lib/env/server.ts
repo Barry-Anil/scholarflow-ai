@@ -4,8 +4,10 @@ import { z } from "zod";
 
 import { publicEnvSchema } from "@/lib/env";
 
+const databaseEnvSchema = z.object({ DATABASE_URL: z.string().min(1) });
+
 const serverEnvSchema = publicEnvSchema.extend({
-  DATABASE_URL: z.string().min(1),
+  DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   SUPABASE_STORAGE_BUCKET: z.string().default("course-materials"),
 });
@@ -62,8 +64,12 @@ const aiEnvSchema = z
       .number()
       .int()
       .min(5_000)
-      .max(180_000)
+      .max(900_000)
       .default(120_000),
+    AI_NUM_CTX: z.coerce.number().int().min(2_048).max(131_072).optional(),
+    AI_NUM_PREDICT: z.coerce.number().int().min(128).max(32_768).optional(),
+    AI_TOP_P: z.coerce.number().min(0).max(1).optional(),
+    AI_SEED: z.coerce.number().int().optional(),
     DAILY_AI_REQUEST_LIMIT: z.coerce
       .number()
       .int()
@@ -104,6 +110,10 @@ export function getServerEnv(): ServerEnv {
   return serverEnvSchema.parse(values());
 }
 
+export function getDatabaseEnv() {
+  return databaseEnvSchema.parse({ DATABASE_URL: process.env.DATABASE_URL });
+}
+
 export function getAiEnv(): AiEnv {
   getOllamaAccessCredentials();
   return aiEnvSchema.parse({
@@ -119,9 +129,23 @@ export function getAiEnv(): AiEnv {
     OLLAMA_BASE_URL: process.env.OLLAMA_BASE_URL,
     CROSSREF_CONTACT_EMAIL: process.env.CROSSREF_CONTACT_EMAIL,
     AI_REQUEST_TIMEOUT_MS: process.env.AI_REQUEST_TIMEOUT_MS,
+    AI_NUM_CTX: process.env.AI_NUM_CTX,
+    AI_NUM_PREDICT: process.env.AI_NUM_PREDICT,
+    AI_TOP_P: process.env.AI_TOP_P,
+    AI_SEED: process.env.AI_SEED,
     DAILY_AI_REQUEST_LIMIT: process.env.DAILY_AI_REQUEST_LIMIT,
     MAX_AGENT_ITERATIONS: process.env.MAX_AGENT_ITERATIONS,
   });
+}
+
+export function getOllamaGenerationOptions() {
+  const env = getAiEnv();
+  return {
+    numCtx: env.AI_NUM_CTX,
+    numPredict: env.AI_NUM_PREDICT,
+    topP: env.AI_TOP_P,
+    seed: env.AI_SEED,
+  };
 }
 
 export function getOllamaAccessCredentials() {

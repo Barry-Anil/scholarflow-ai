@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "start:standalone": "node scripts/prepare-standalone.mjs && node .next/standalone/server.js",
+    "worker:agent": "node --conditions=react-server --import tsx scripts/agent-worker.ts",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -42,6 +43,7 @@
     "react-hook-form": "^7.89.0",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.7.0",
+    "tsx": "^4.23.15",
     "unpdf": "^1.8.1",
     "zod": "^4.6.5"
   },

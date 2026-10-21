@@ -20,10 +20,20 @@ describe("Ollama structured provider", () => {
       ),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const provider = new OllamaProvider("http://localhost:11434", 5_000, {
-      clientId: "access-client",
-      clientSecret: "access-secret",
-    });
+    const provider = new OllamaProvider(
+      "http://localhost:11434",
+      5_000,
+      {
+        clientId: "access-client",
+        clientSecret: "access-secret",
+      },
+      {
+        numCtx: 16_384,
+        numPredict: 4_096,
+        topP: 0.9,
+        seed: 42,
+      },
+    );
     const schema = z.object({ answer: z.string() });
 
     const result = await provider.generateObject({
@@ -44,6 +54,12 @@ describe("Ollama structured provider", () => {
       think: false,
     });
     expect(body.format).toMatchObject({ type: "object" });
+    expect(body.options).toMatchObject({
+      num_ctx: 16_384,
+      num_predict: 4_096,
+      top_p: 0.9,
+      seed: 42,
+    });
   });
 
   it("classifies a connection failure without exposing request data", async () => {

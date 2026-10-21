@@ -76,7 +76,7 @@ describe("live Supabase foundation", () => {
       where n.nspname = 'public'
         and c.relname in (
           'profiles', 'courses', 'course_members', 'documents', 'document_chunks',
-          'processing_jobs', 'assignments', 'assignment_questions', 'rubric_criteria',
+          'processing_jobs', 'processing_job_diagnostics', 'assignments', 'assignment_questions', 'rubric_criteria',
           'agent_runs', 'agent_run_events', 'assignment_drafts', 'draft_answers',
           'answer_citations', 'research_findings', 'review_reports', 'review_findings',
           'draft_approvals', 'revision_history', 'usage_records', 'export_records',
@@ -84,15 +84,24 @@ describe("live Supabase foundation", () => {
         )
       group by c.relname, c.relrowsecurity
     `;
-    expect(rows).toHaveLength(22);
+    expect(rows).toHaveLength(23);
     expect(rows.every((row) => row.rls_enabled)).toBe(true);
     expect(
       rows
-        .filter((row) => row.table_name !== "rate_limit_counters")
+        .filter(
+          (row) =>
+            !["rate_limit_counters", "processing_job_diagnostics"].includes(
+              row.table_name,
+            ),
+        )
         .every((row) => row.policy_count > 0),
     ).toBe(true);
     expect(
       rows.find((row) => row.table_name === "rate_limit_counters")
+        ?.policy_count,
+    ).toBe(0);
+    expect(
+      rows.find((row) => row.table_name === "processing_job_diagnostics")
         ?.policy_count,
     ).toBe(0);
   });
@@ -131,6 +140,32 @@ describe("live Supabase foundation", () => {
           tx`insert into public.courses (owner_id, title) values (${owner.id}, 'Forbidden')`,
       ),
     ).rejects.toThrow();
+  });
+
+  it("keeps processing job mutations server-only", async () => {
+    const courseId = randomUUID();
+    const assignmentId = randomUUID();
+    try {
+      await asAuthenticated(
+        owner.id,
+        (tx) =>
+          tx`insert into public.courses (id, owner_id, title) values (${courseId}, ${owner.id}, 'Queue boundary test')`,
+      );
+      await asAuthenticated(
+        owner.id,
+        (tx) =>
+          tx`insert into public.assignments (id, course_id, owner_id, title, brief_markdown) values (${assignmentId}, ${courseId}, ${owner.id}, 'Queue boundary assignment', 'Brief')`,
+      );
+      await expect(
+        asAuthenticated(
+          owner.id,
+          (tx) =>
+            tx`insert into public.processing_jobs (owner_id, course_id, assignment_id, type, payload) values (${owner.id}, ${courseId}, ${assignmentId}, 'agent.research.question', '{}'::jsonb)`,
+        ),
+      ).rejects.toThrow();
+    } finally {
+      await sql`delete from public.courses where id = ${courseId}`;
+    }
   });
 
   it("enforces owner, editor, viewer, and outsider course permissions", async () => {

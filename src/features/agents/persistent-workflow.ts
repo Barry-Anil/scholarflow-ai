@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, count, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { countWords } from "@/features/assignments/parser";
@@ -18,12 +18,17 @@ import {
   documents,
   draftAnswers,
   processingJobs,
+  processingJobDiagnostics,
   researchFindings,
   reviewReports,
   rubricCriteria,
   usageRecords,
 } from "@/lib/db/schema";
-import { getAiEnv, getOllamaAccessCredentials } from "@/lib/env/server";
+import {
+  getAiEnv,
+  getOllamaAccessCredentials,
+  getOllamaGenerationOptions,
+} from "@/lib/env/server";
 import { AppError, errorFingerprint } from "@/lib/errors";
 import { logger } from "@/lib/logging/logger";
 import { searchCrossref } from "@/lib/research/crossref";
@@ -46,6 +51,13 @@ import {
   type RevisionJobPayload,
 } from "./revision-workflow";
 import { draftQuestionWithEvidence } from "./student";
+import { renewAgentJobLease } from "./agent-job-queue";
+import {
+  agentDiagnostic,
+  agentPublicError,
+  agentRetryDelayMs,
+  isRetryableAgentError,
+} from "./job-policy";
 
 export { enqueueReviewAgent } from "./review-workflow";
 export { enqueueRevisionAgent } from "./revision-workflow";
@@ -377,66 +389,141 @@ export async function enqueueStudentAgent(
   return { ...result, jobCount: questions.length };
 }
 
-export async function processAgentJob(jobId: string, ownerId: string) {
+export async function processClaimedAgentJob(
+  jobId: string,
+  workerId: string,
+  options: { leaseMs: number; heartbeatMs: number },
+) {
   const db = getDatabase();
-  const staleBefore = new Date(
-    Date.now() - getAiEnv().AI_REQUEST_TIMEOUT_MS - 30_000,
-  );
   const [job] = await db
-    .update(processingJobs)
-    .set({
-      status: "processing",
-      lockedAt: new Date(),
-      lockedBy: `user:${ownerId}`,
-      attempts: sql`${processingJobs.attempts} + 1`,
-    })
+    .select()
+    .from(processingJobs)
     .where(
       and(
         eq(processingJobs.id, jobId),
-        eq(processingJobs.ownerId, ownerId),
-        or(
-          eq(processingJobs.status, "queued"),
-          and(
-            eq(processingJobs.status, "processing"),
-            lt(processingJobs.lockedAt, staleBefore),
-          ),
-        ),
-        inArray(processingJobs.type, [
-          RESEARCH_JOB_TYPE,
-          DRAFT_JOB_TYPE,
-          REVIEW_JOB_TYPE,
-          REVISION_JOB_TYPE,
-        ]),
+        eq(processingJobs.status, "processing"),
+        eq(processingJobs.lockedBy, workerId),
       ),
     )
-    .returning();
+    .limit(1);
   if (!job) {
-    const [existing] = await db
-      .select({ status: processingJobs.status })
-      .from(processingJobs)
-      .where(
-        and(eq(processingJobs.id, jobId), eq(processingJobs.ownerId, ownerId)),
-      )
-      .limit(1);
-    if (!existing)
-      throw new AppError("FORBIDDEN", "This agent job is unavailable.");
-    return {
-      status: existing.status,
-      completed: existing.status === "completed",
-    };
+    throw new AppError("FORBIDDEN", "The worker no longer owns this job.", {
+      status: 409,
+    });
   }
+  const ownerId = job.ownerId;
   let payload: AgentJobPayload;
   try {
     payload = parsePayload(job.payload);
   } catch (error) {
-    await failInvalidJob(job.id, ownerId, error);
-    throw error;
+    await failInvalidJob(job.id, ownerId, workerId, job.attempts, error);
+    return { status: "failed" as const };
   }
+
+  if (job.lastErrorCode === "WORKER_LEASE_EXHAUSTED") {
+    const exhaustedError = new AppError(
+      "AI_UNAVAILABLE",
+      "The agent worker stopped repeatedly while processing this task.",
+    );
+    let validContext = false;
+    try {
+      await assertJobContext(job, payload, ownerId);
+      validContext = true;
+    } catch (error) {
+      logger.warn("agent.job_exhausted_context_rejected", {
+        jobId: job.id,
+        workerId,
+        ...errorFingerprint(error),
+      });
+    }
+    await failRun(
+      job,
+      payload,
+      ownerId,
+      workerId,
+      exhaustedError,
+      validContext,
+    );
+    return { status: "failed" as const };
+  }
+
+  let leaseLost = false;
+  let heartbeatRunning = false;
+  const heartbeat = setInterval(() => {
+    if (heartbeatRunning || leaseLost) return;
+    heartbeatRunning = true;
+    void renewAgentJobLease(job.id, workerId, options.leaseMs)
+      .then((renewed) => {
+        leaseLost = !renewed;
+      })
+      .catch((error) => {
+        logger.error("agent.job_heartbeat_failed", {
+          jobId: job.id,
+          workerId,
+          ...errorFingerprint(error),
+        });
+      })
+      .finally(() => {
+        heartbeatRunning = false;
+      });
+  }, options.heartbeatMs);
 
   let contextValidated = false;
   try {
-    await assertJobContext(job, payload, ownerId);
+    const recoveringFinalization =
+      job.lastErrorCode === "WORKER_FINALIZATION_RECOVERY";
+    await assertJobContext(job, payload, ownerId, recoveringFinalization);
     contextValidated = true;
+    if (recoveringFinalization) {
+      const remaining = await remainingJobs(payload.runId, job.id);
+      if (!remaining) {
+        const [run] = await db
+          .select({ status: agentRuns.status })
+          .from(agentRuns)
+          .where(
+            and(
+              eq(agentRuns.id, payload.runId),
+              eq(agentRuns.ownerId, ownerId),
+            ),
+          )
+          .limit(1);
+        if (run?.status !== "completed") {
+          await finalizeAgentRun(job, ownerId, payload);
+        } else {
+          await ensureTerminalEvent(job, ownerId, payload);
+        }
+      }
+      const [released] = await db
+        .update(processingJobs)
+        .set({
+          status: "completed",
+          completedAt: new Date(),
+          lockedAt: null,
+          lockedBy: null,
+          leaseExpiresAt: null,
+          lastErrorCode: null,
+          lastError: null,
+        })
+        .where(
+          and(
+            eq(processingJobs.id, job.id),
+            eq(processingJobs.status, "processing"),
+            eq(processingJobs.lockedBy, workerId),
+          ),
+        )
+        .returning({ id: processingJobs.id });
+      if (!released) {
+        throw new AppError(
+          "DATABASE_UNAVAILABLE",
+          "The worker lost its lease during finalization recovery.",
+        );
+      }
+      return {
+        status: "completed" as const,
+        completed: !remaining,
+        remaining,
+      };
+    }
     await db
       .update(agentRuns)
       .set({
@@ -463,39 +550,68 @@ export async function processAgentJob(jobId: string, ownerId: string) {
         asRevisionPayload(payload),
       );
     }
-    await db
+    if (
+      leaseLost ||
+      !(await renewAgentJobLease(job.id, workerId, options.leaseMs))
+    ) {
+      throw new AppError(
+        "DATABASE_UNAVAILABLE",
+        "The worker lost its lease before saving completion.",
+      );
+    }
+    const [completedJob] = await db
       .update(processingJobs)
       .set({
         status: "completed",
         completedAt: new Date(),
-        lockedAt: null,
-        lockedBy: null,
+        lastErrorCode: null,
+        lastError: null,
       })
-      .where(eq(processingJobs.id, job.id));
+      .where(
+        and(
+          eq(processingJobs.id, job.id),
+          eq(processingJobs.status, "processing"),
+          eq(processingJobs.lockedBy, workerId),
+        ),
+      )
+      .returning({ id: processingJobs.id });
+    if (!completedJob) {
+      throw new AppError(
+        "DATABASE_UNAVAILABLE",
+        "The worker lost its lease before saving completion.",
+      );
+    }
     const remaining = await remainingJobs(payload.runId);
     if (!remaining) {
-      if (job.type === RESEARCH_JOB_TYPE) {
-        await finalizeResearch(job.assignmentId!, ownerId, payload.runId);
-      } else if (job.type === DRAFT_JOB_TYPE) {
-        await finalizeDraft(job.assignmentId!, ownerId, payload);
-      } else if (job.type === REVIEW_JOB_TYPE) {
-        await finalizeReviewRun(
-          job.assignmentId!,
-          ownerId,
-          asReviewPayload(payload),
-        );
-      } else {
-        await finalizeRevisionRun(
-          job.assignmentId!,
-          ownerId,
-          asRevisionPayload(payload),
-        );
-      }
+      await finalizeAgentRun(job, ownerId, payload);
     }
+    await db
+      .update(processingJobs)
+      .set({ lockedAt: null, lockedBy: null, leaseExpiresAt: null })
+      .where(
+        and(
+          eq(processingJobs.id, job.id),
+          eq(processingJobs.status, "completed"),
+          eq(processingJobs.lockedBy, workerId),
+        ),
+      );
     return { status: "completed" as const, completed: !remaining, remaining };
   } catch (error) {
-    await failRun(job, payload, ownerId, error, contextValidated);
-    throw error;
+    const retryable = isRetryableAgentError(error);
+    const recoveringFinalization =
+      job.lastErrorCode === "WORKER_FINALIZATION_RECOVERY";
+    if (
+      retryable &&
+      (recoveringFinalization || job.attempts < job.maxAttempts)
+    ) {
+      const delayMs = agentRetryDelayMs(job.attempts);
+      await requeueJob(job, workerId, error, delayMs, recoveringFinalization);
+      return { status: "queued" as const, retryInMs: delayMs };
+    }
+    await failRun(job, payload, ownerId, workerId, error, contextValidated);
+    return { status: "failed" as const };
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
@@ -503,6 +619,7 @@ async function assertJobContext(
   job: typeof processingJobs.$inferSelect,
   payload: AgentJobPayload,
   ownerId: string,
+  allowCompletedRun = false,
 ) {
   if (!job.assignmentId) {
     throw new AppError("FORBIDDEN", "This agent task is unavailable.", {
@@ -525,7 +642,12 @@ async function assertJobContext(
         eq(agentRuns.assignmentId, job.assignmentId),
         eq(agentRuns.ownerId, ownerId),
         eq(agentRuns.agent, expectedAgent),
-        inArray(agentRuns.status, ["queued", "running"]),
+        inArray(
+          agentRuns.status,
+          allowCompletedRun
+            ? ["queued", "running", "completed"]
+            : ["queued", "running"],
+        ),
       ),
     )
     .limit(1);
@@ -884,6 +1006,7 @@ async function processDraftQuestion(
         env.OLLAMA_BASE_URL,
         env.AI_REQUEST_TIMEOUT_MS,
         getOllamaAccessCredentials(),
+        getOllamaGenerationOptions(),
       ),
       env.AI_MODEL_WRITER,
       {
@@ -979,7 +1102,7 @@ async function processDraftQuestion(
   );
 }
 
-async function remainingJobs(runId: string) {
+async function remainingJobs(runId: string, excludingJobId?: string) {
   const [row] = await getDatabase()
     .select({ total: count() })
     .from(processingJobs)
@@ -987,9 +1110,81 @@ async function remainingJobs(runId: string) {
       and(
         sql`${processingJobs.payload}->>'runId' = ${runId}`,
         inArray(processingJobs.status, ["queued", "processing"]),
+        excludingJobId ? ne(processingJobs.id, excludingJobId) : sql`true`,
       ),
     );
   return row?.total ?? 0;
+}
+
+async function finalizeAgentRun(
+  job: typeof processingJobs.$inferSelect,
+  ownerId: string,
+  payload: AgentJobPayload,
+) {
+  if (job.type === RESEARCH_JOB_TYPE) {
+    await finalizeResearch(job.assignmentId!, ownerId, payload.runId);
+  } else if (job.type === DRAFT_JOB_TYPE) {
+    await finalizeDraft(job.assignmentId!, ownerId, payload);
+  } else if (job.type === REVIEW_JOB_TYPE) {
+    await finalizeReviewRun(
+      job.assignmentId!,
+      ownerId,
+      asReviewPayload(payload),
+    );
+  } else {
+    await finalizeRevisionRun(
+      job.assignmentId!,
+      ownerId,
+      asRevisionPayload(payload),
+    );
+  }
+}
+
+async function ensureTerminalEvent(
+  job: typeof processingJobs.$inferSelect,
+  ownerId: string,
+  payload: AgentJobPayload,
+) {
+  const terminal =
+    job.type === RESEARCH_JOB_TYPE
+      ? {
+          eventType: "research.completed",
+          message: "Agent C completed research.",
+        }
+      : job.type === DRAFT_JOB_TYPE
+        ? {
+            eventType: "draft.completed",
+            message: "Agent B completed the evidence-backed draft.",
+          }
+        : job.type === REVIEW_JOB_TYPE
+          ? {
+              eventType: "review.completed",
+              message: "Agent A completed the independent review.",
+            }
+          : {
+              eventType: "revision.completed",
+              message: "Agent B completed the revision cycle.",
+            };
+  const [existing] = await getDatabase()
+    .select({ id: agentRunEvents.id })
+    .from(agentRunEvents)
+    .where(
+      and(
+        eq(agentRunEvents.runId, payload.runId),
+        eq(agentRunEvents.eventType, terminal.eventType),
+      ),
+    )
+    .limit(1);
+  if (!existing) {
+    await event(
+      payload.runId,
+      job.assignmentId!,
+      ownerId,
+      terminal.eventType,
+      terminal.message,
+      { recovered: true },
+    );
+  }
 }
 
 async function finalizeResearch(
@@ -1109,27 +1304,44 @@ async function failRun(
   job: typeof processingJobs.$inferSelect,
   payload: AgentJobPayload,
   ownerId: string,
+  workerId: string,
   error: unknown,
   contextValidated: boolean,
 ) {
   const db = getDatabase();
-  const message =
-    error instanceof AppError ? error.userMessage : "The agent task failed.";
+  const message = agentPublicError(error);
   if (!contextValidated) {
-    await failInvalidJob(job.id, ownerId, error);
+    await failInvalidJob(job.id, ownerId, workerId, job.attempts, error);
     return;
   }
-  await db.transaction(async (tx) => {
-    await tx
+  const failed = await db.transaction(async (tx) => {
+    const [failedJob] = await tx
       .update(processingJobs)
       .set({
         status: "failed",
+        lastErrorCode:
+          error instanceof AppError ? error.code : "UNEXPECTED_ERROR",
         lastError: message,
         completedAt: new Date(),
         lockedAt: null,
         lockedBy: null,
+        leaseExpiresAt: null,
       })
-      .where(eq(processingJobs.id, job.id));
+      .where(
+        and(
+          eq(processingJobs.id, job.id),
+          inArray(processingJobs.status, ["processing", "completed"]),
+          eq(processingJobs.lockedBy, workerId),
+        ),
+      )
+      .returning({ id: processingJobs.id });
+    if (!failedJob) return false;
+    await tx.insert(processingJobDiagnostics).values({
+      jobId: job.id,
+      attempt: job.attempts,
+      errorCode: error instanceof AppError ? error.code : "UNEXPECTED_ERROR",
+      detail: agentDiagnostic(error),
+    });
     await tx
       .update(processingJobs)
       .set({
@@ -1169,7 +1381,15 @@ async function failRun(
         .set({ status: "NEEDS_INFORMATION" })
         .where(eq(assignments.id, job.assignmentId));
     }
+    return true;
   });
+  if (!failed) {
+    logger.warn("agent.job_terminal_update_skipped", {
+      jobId: job.id,
+      workerId,
+    });
+    return;
+  }
   if (job.assignmentId) {
     await event(
       payload.runId,
@@ -1193,21 +1413,100 @@ async function failRun(
   });
 }
 
-async function failInvalidJob(jobId: string, ownerId: string, error: unknown) {
-  const message =
-    error instanceof AppError ? error.userMessage : "The agent task failed.";
+async function requeueJob(
+  job: typeof processingJobs.$inferSelect,
+  workerId: string,
+  error: unknown,
+  delayMs: number,
+  recoveringFinalization = false,
+) {
+  const [requeued] = await getDatabase()
+    .update(processingJobs)
+    .set({
+      status: "queued",
+      availableAt: new Date(Date.now() + delayMs),
+      completedAt: null,
+      lockedAt: null,
+      lockedBy: null,
+      leaseExpiresAt: null,
+      lastErrorCode: recoveringFinalization
+        ? "WORKER_FINALIZATION_RECOVERY"
+        : error instanceof AppError
+          ? error.code
+          : "UNEXPECTED_ERROR",
+      lastError: agentPublicError(error),
+    })
+    .where(
+      and(
+        eq(processingJobs.id, job.id),
+        inArray(processingJobs.status, ["processing", "completed"]),
+        eq(processingJobs.lockedBy, workerId),
+      ),
+    )
+    .returning({ id: processingJobs.id });
+  if (!requeued) {
+    throw new AppError(
+      "DATABASE_UNAVAILABLE",
+      "The worker lost its lease before scheduling a retry.",
+    );
+  }
   await getDatabase()
+    .insert(processingJobDiagnostics)
+    .values({
+      jobId: job.id,
+      attempt: job.attempts,
+      errorCode: error instanceof AppError ? error.code : "UNEXPECTED_ERROR",
+      detail: agentDiagnostic(error),
+    });
+  logger.warn("agent.job_retry_scheduled", {
+    jobId: job.id,
+    workerId,
+    attempt: job.attempts,
+    maxAttempts: job.maxAttempts,
+    retryInMs: delayMs,
+    ...errorFingerprint(error),
+  });
+}
+
+async function failInvalidJob(
+  jobId: string,
+  ownerId: string,
+  workerId: string,
+  attempt: number,
+  error: unknown,
+) {
+  const message = agentPublicError(error);
+  const [failed] = await getDatabase()
     .update(processingJobs)
     .set({
       status: "failed",
+      lastErrorCode:
+        error instanceof AppError ? error.code : "UNEXPECTED_ERROR",
       lastError: message,
       completedAt: new Date(),
       lockedAt: null,
       lockedBy: null,
+      leaseExpiresAt: null,
     })
     .where(
-      and(eq(processingJobs.id, jobId), eq(processingJobs.ownerId, ownerId)),
-    );
+      and(
+        eq(processingJobs.id, jobId),
+        eq(processingJobs.ownerId, ownerId),
+        eq(processingJobs.status, "processing"),
+        eq(processingJobs.lockedBy, workerId),
+      ),
+    )
+    .returning({ id: processingJobs.id });
+  if (failed) {
+    await getDatabase()
+      .insert(processingJobDiagnostics)
+      .values({
+        jobId,
+        attempt,
+        errorCode: error instanceof AppError ? error.code : "UNEXPECTED_ERROR",
+        detail: agentDiagnostic(error),
+      });
+  }
   logger.warn("agent.job_context_rejected", {
     jobId,
     userId: ownerId,

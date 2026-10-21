@@ -25,28 +25,33 @@ export function AgentJobMonitor({
     async function run() {
       try {
         for (const [index, jobId] of jobIds.entries()) {
-          let status = "processing";
-          while (status === "processing") {
+          let status = "queued";
+          let failureMessage = "";
+          while (status === "queued" || status === "processing") {
             const response = await fetch(`/api/agent-jobs/${jobId}`, {
-              method: "POST",
+              method: "GET",
+              cache: "no-store",
             });
             const body = (await response.json()) as {
               status?: string;
               message?: string;
             };
-            if (!response.ok && response.status !== 202) {
+            failureMessage = body.message ?? "";
+            if (!response.ok) {
               throw new Error(
                 body.message || "The agent task could not be completed.",
               );
             }
             status = body.status ?? "failed";
-            if (status === "processing") {
-              await new Promise((resolve) => window.setTimeout(resolve, 750));
+            if (status === "queued" || status === "processing") {
+              await new Promise((resolve) => window.setTimeout(resolve, 2_000));
             }
             if (cancelled) return;
           }
           if (status !== "completed") {
-            throw new Error("The agent task did not complete.");
+            throw new Error(
+              failureMessage || "The agent task did not complete successfully.",
+            );
           }
           setCompleted(index + 1);
         }

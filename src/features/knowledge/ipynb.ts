@@ -30,7 +30,9 @@ type JupyterNotebook = {
 
 function extractSourceText(source: unknown): string {
   if (Array.isArray(source)) {
-    return source.map((line) => (typeof line === "string" ? line : "")).join("");
+    return source
+      .map((line) => (typeof line === "string" ? line : ""))
+      .join("");
   }
   if (typeof source === "string") {
     return source;

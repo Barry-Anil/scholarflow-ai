@@ -30,11 +30,13 @@ export class OllamaProvider implements StructuredAiProvider {
   readonly #baseUrl: URL;
   readonly #timeoutMs: number;
   readonly #headers: Headers;
+  readonly #generationOptions: OllamaGenerationOptions;
 
   constructor(
     baseUrl: string,
     timeoutMs: number,
     accessCredentials?: OllamaAccessCredentials,
+    generationOptions: OllamaGenerationOptions = {},
   ) {
     const parsed = new URL(baseUrl);
     if (
@@ -50,6 +52,7 @@ export class OllamaProvider implements StructuredAiProvider {
     this.#baseUrl = parsed;
     this.#timeoutMs = timeoutMs;
     this.#headers = createOllamaRequestHeaders(accessCredentials);
+    this.#generationOptions = generationOptions;
   }
 
   async generateObject<T>(request: StructuredGenerationRequest<T>) {
@@ -72,7 +75,21 @@ export class OllamaProvider implements StructuredAiProvider {
           stream: false,
           format: z.toJSONSchema(request.schema),
           think: false,
-          options: { temperature: request.temperature ?? 0 },
+          options: {
+            temperature: request.temperature ?? 0,
+            ...(this.#generationOptions.numCtx === undefined
+              ? {}
+              : { num_ctx: this.#generationOptions.numCtx }),
+            ...(this.#generationOptions.numPredict === undefined
+              ? {}
+              : { num_predict: this.#generationOptions.numPredict }),
+            ...(this.#generationOptions.topP === undefined
+              ? {}
+              : { top_p: this.#generationOptions.topP }),
+            ...(this.#generationOptions.seed === undefined
+              ? {}
+              : { seed: this.#generationOptions.seed }),
+          },
         }),
         cache: "no-store",
         signal: AbortSignal.timeout(this.#timeoutMs),
@@ -135,3 +152,10 @@ export class OllamaProvider implements StructuredAiProvider {
     };
   }
 }
+
+export type OllamaGenerationOptions = {
+  numCtx?: number;
+  numPredict?: number;
+  topP?: number;
+  seed?: number;
+};

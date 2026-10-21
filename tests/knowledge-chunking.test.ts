@@ -30,9 +30,9 @@ describe("knowledge document validation", () => {
     expect(resolveAcceptedDocumentMime("lecture-notes.DOCX", "")).toBe(
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     );
-    expect(resolveAcceptedDocumentMime("analysis.ipynb", "application/json")).toBe(
-      "application/x-ipynb+json",
-    );
+    expect(
+      resolveAcceptedDocumentMime("analysis.ipynb", "application/json"),
+    ).toBe("application/x-ipynb+json");
     expect(resolveAcceptedDocumentMime("model.py", "text/plain")).toBe(
       "text/x-python",
     );
@@ -146,13 +146,18 @@ describe("IPYNB extraction", () => {
       ],
     };
 
-    const bytes = new TextEncoder().encode(JSON.stringify(notebook)).buffer as ArrayBuffer;
+    const bytes = new TextEncoder().encode(JSON.stringify(notebook))
+      .buffer as ArrayBuffer;
     const result = extractIpynbText(bytes);
 
     expect(result.cellCount).toBe(2);
     expect(result.language).toBe("python");
-    expect(result.text).toContain("# Machine Learning Notes\nIntroductory concepts.");
-    expect(result.text).toContain("```python\ndef train_model(data):\n    return len(data) * 2\n```");
+    expect(result.text).toContain(
+      "# Machine Learning Notes\nIntroductory concepts.",
+    );
+    expect(result.text).toContain(
+      "```python\ndef train_model(data):\n    return len(data) * 2\n```",
+    );
     expect(result.text).toContain("Output:\n```\nModel initialized.\n42\n```");
   });
 
@@ -167,21 +172,25 @@ describe("IPYNB extraction", () => {
               output_type: "error",
               ename: "ZeroDivisionError",
               evalue: "division by zero",
-              traceback: ["\u001b[0;31mZeroDivisionError\u001b[0m: division by zero"],
+              traceback: [
+                "\u001b[0;31mZeroDivisionError\u001b[0m: division by zero",
+              ],
             },
           ],
         },
       ],
     };
 
-    const bytes = new TextEncoder().encode(JSON.stringify(notebook)).buffer as ArrayBuffer;
+    const bytes = new TextEncoder().encode(JSON.stringify(notebook))
+      .buffer as ArrayBuffer;
     const result = extractIpynbText(bytes);
     expect(result.text).toContain("ZeroDivisionError: division by zero");
     expect(result.text).not.toContain("\u001b[0;31m");
   });
 
   it("rejects invalid JSON notebook uploads", () => {
-    const bytes = new TextEncoder().encode("{ invalid-json ").buffer as ArrayBuffer;
+    const bytes = new TextEncoder().encode("{ invalid-json ")
+      .buffer as ArrayBuffer;
     expect(() => extractIpynbText(bytes)).toThrow(
       "The Jupyter Notebook is not valid JSON.",
     );
@@ -237,4 +246,3 @@ describe("Code document extraction & chunking", () => {
     expect(chunks[0]?.content).toContain("  readonly id: string;");
   });
 });
-

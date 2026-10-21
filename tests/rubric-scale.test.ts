@@ -1,12 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { computeRubricScale, getScaleLevel } from "@/features/assignments/rubric-scale";
+import {
+  computeRubricScale,
+  getScaleLevel,
+} from "@/features/assignments/rubric-scale";
 
 describe("rubric-scale", () => {
   it("computes baseline scale levels correctly", () => {
-    expect(getScaleLevel(95)).toEqual({ level: "exemplary", label: "Exemplary" });
-    expect(getScaleLevel(80)).toEqual({ level: "proficient", label: "Proficient" });
-    expect(getScaleLevel(65)).toEqual({ level: "developing", label: "Developing" });
-    expect(getScaleLevel(40)).toEqual({ level: "at_risk", label: "Needs Attention" });
+    expect(getScaleLevel(95)).toEqual({
+      level: "exemplary",
+      label: "Exemplary",
+    });
+    expect(getScaleLevel(80)).toEqual({
+      level: "proficient",
+      label: "Proficient",
+    });
+    expect(getScaleLevel(65)).toEqual({
+      level: "developing",
+      label: "Developing",
+    });
+    expect(getScaleLevel(40)).toEqual({
+      level: "at_risk",
+      label: "Needs Attention",
+    });
   });
 
   it("handles empty criteria list gracefully", () => {
@@ -21,8 +36,20 @@ describe("rubric-scale", () => {
 
   it("calculates draft baseline when unreviewed", () => {
     const criteria = [
-      { id: "c1", title: "Global code quality", description: "Clean code", weight: 50, position: 1 },
-      { id: "c2", title: "Task 1 PoS analysis", description: "Correct PoS", weight: 50, position: 2 },
+      {
+        id: "c1",
+        title: "Global code quality",
+        description: "Clean code",
+        weight: 50,
+        position: 1,
+      },
+      {
+        id: "c2",
+        title: "Task 1 PoS analysis",
+        description: "Correct PoS",
+        weight: 50,
+        position: 2,
+      },
     ];
     const answers = [
       { questionId: "q1", markdown: "Substantive answer" },
@@ -43,8 +70,20 @@ describe("rubric-scale", () => {
 
   it("accurately detects regressions and improvements across reviews", () => {
     const criteria = [
-      { id: "c1", title: "Code quality", description: "Modular", weight: 50, position: 1 },
-      { id: "c2", title: "Evidence", description: "Citations", weight: 50, position: 2 },
+      {
+        id: "c1",
+        title: "Code quality",
+        description: "Modular",
+        weight: 50,
+        position: 1,
+      },
+      {
+        id: "c2",
+        title: "Evidence",
+        description: "Citations",
+        weight: 50,
+        position: 2,
+      },
     ];
     const answers = [
       { questionId: "q1", markdown: "Answer text" },

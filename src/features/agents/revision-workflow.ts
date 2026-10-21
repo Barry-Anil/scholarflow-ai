@@ -22,7 +22,11 @@ import {
   rubricCriteria,
   usageRecords,
 } from "@/lib/db/schema";
-import { getAiEnv, getOllamaAccessCredentials } from "@/lib/env/server";
+import {
+  getAiEnv,
+  getOllamaAccessCredentials,
+  getOllamaGenerationOptions,
+} from "@/lib/env/server";
 import { AppError } from "@/lib/errors";
 import { acceptedFindingIdsForRevision, REVISION_JOB_TYPE } from "./contracts";
 import { reviseQuestionFromFindings } from "./reviser";
@@ -391,6 +395,7 @@ export async function processRevisionQuestionJob(
       env.OLLAMA_BASE_URL,
       env.AI_REQUEST_TIMEOUT_MS,
       getOllamaAccessCredentials(),
+      getOllamaGenerationOptions(),
     ),
     env.AI_MODEL_WRITER,
     {

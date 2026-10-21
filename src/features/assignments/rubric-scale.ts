@@ -132,116 +132,152 @@ export function computeRubricScale(
     };
   }
 
-  const answeredCount = answers.filter((a) => a.markdown.trim().length > 0).length;
-  const draftCompletenessRatio = answers.length > 0 ? answeredCount / answers.length : 0;
+  const answeredCount = answers.filter(
+    (a) => a.markdown.trim().length > 0,
+  ).length;
+  const draftCompletenessRatio =
+    answers.length > 0 ? answeredCount / answers.length : 0;
 
   // Build criterion progress items
-  const criterionProgressList: CriterionProgress[] = criteria.map((criterion) => {
-    // Match findings for this criterion: by rubricCriterionId or title matching
-    const matchingFindings = reviewItems.filter((item) => {
-      if (item.rubricCriterionId === criterion.id) return true;
-      if (!item.rubricCriterionId) {
-        const itemText = (item.title + " " + item.recommendedCorrection).toLowerCase();
-        const critWords = criterion.title.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-        if (critWords.some((word) => itemText.includes(word))) return true;
+  const criterionProgressList: CriterionProgress[] = criteria.map(
+    (criterion) => {
+      // Match findings for this criterion: by rubricCriterionId or title matching
+      const matchingFindings = reviewItems.filter((item) => {
+        if (item.rubricCriterionId === criterion.id) return true;
+        if (!item.rubricCriterionId) {
+          const itemText = (
+            item.title +
+            " " +
+            item.recommendedCorrection
+          ).toLowerCase();
+          const critWords = criterion.title
+            .toLowerCase()
+            .split(/\s+/)
+            .filter((w) => w.length > 3);
+          if (critWords.some((word) => itemText.includes(word))) return true;
+        }
+        return false;
+      });
+
+      const matchingPrevFindings = previousReviewItems.filter((item) => {
+        if (item.rubricCriterionId === criterion.id) return true;
+        if (!item.rubricCriterionId) {
+          const itemText = (
+            item.title +
+            " " +
+            item.recommendedCorrection
+          ).toLowerCase();
+          const critWords = criterion.title
+            .toLowerCase()
+            .split(/\s+/)
+            .filter((w) => w.length > 3);
+          if (critWords.some((word) => itemText.includes(word))) return true;
+        }
+        return false;
+      });
+
+      const openFindings = matchingFindings.filter(
+        (f) => f.resolution !== "resolved",
+      );
+      const resolvedFindings = matchingFindings.filter(
+        (f) => f.resolution === "resolved",
+      );
+
+      const criticalCount = openFindings.filter(
+        (f) => f.severity === "critical",
+      ).length;
+      const majorCount = openFindings.filter(
+        (f) => f.severity === "major",
+      ).length;
+      const minorCount = openFindings.filter(
+        (f) => f.severity === "minor",
+      ).length;
+
+      // Calculate score on 0 - 100 scale
+      let currentScore: number;
+      if (!hasDraft) {
+        currentScore = 0;
+      } else if (!hasReviewReport) {
+        // Baseline draft before review: estimate based on draft completeness
+        currentScore = Math.round(50 + draftCompletenessRatio * 35);
+      } else {
+        // Reviewed: start at 95 if no issues, deduct for findings
+        let penalty = criticalCount * 35 + majorCount * 20 + minorCount * 8;
+        const suggestions = openFindings.filter(
+          (f) => f.severity === "suggestion",
+        ).length;
+        penalty += suggestions * 3;
+
+        let base = 95 - penalty;
+        // Bonus for resolved issues
+        if (resolvedFindings.length > 0) {
+          base += Math.min(resolvedFindings.length * 5, 10);
+        }
+        currentScore = Math.max(10, Math.min(100, Math.round(base)));
       }
-      return false;
-    });
 
-    const matchingPrevFindings = previousReviewItems.filter((item) => {
-      if (item.rubricCriterionId === criterion.id) return true;
-      if (!item.rubricCriterionId) {
-        const itemText = (item.title + " " + item.recommendedCorrection).toLowerCase();
-        const critWords = criterion.title.toLowerCase().split(/\s+/).filter((w) => w.length > 3);
-        if (critWords.some((word) => itemText.includes(word))) return true;
+      // Calculate previous score if previous review exists
+      let previousScore: number | null = null;
+      if (hasPreviousReviewReport) {
+        const prevOpen = matchingPrevFindings.filter(
+          (f) => f.resolution !== "resolved",
+        );
+        const prevCrit = prevOpen.filter(
+          (f) => f.severity === "critical",
+        ).length;
+        const prevMajor = prevOpen.filter((f) => f.severity === "major").length;
+        const prevMinor = prevOpen.filter((f) => f.severity === "minor").length;
+        const prevPenalty = prevCrit * 35 + prevMajor * 20 + prevMinor * 8;
+        const prevBase = 95 - prevPenalty;
+        previousScore = Math.max(10, Math.min(100, Math.round(prevBase)));
       }
-      return false;
-    });
 
-    const openFindings = matchingFindings.filter((f) => f.resolution !== "resolved");
-    const resolvedFindings = matchingFindings.filter((f) => f.resolution === "resolved");
+      // Determine trend and delta
+      let delta: number | null = null;
+      let trend: "better" | "regressed" | "stable" | "baseline" = "baseline";
 
-    const criticalCount = openFindings.filter((f) => f.severity === "critical").length;
-    const majorCount = openFindings.filter((f) => f.severity === "major").length;
-    const minorCount = openFindings.filter((f) => f.severity === "minor").length;
-
-    // Calculate score on 0 - 100 scale
-    let currentScore: number;
-    if (!hasDraft) {
-      currentScore = 0;
-    } else if (!hasReviewReport) {
-      // Baseline draft before review: estimate based on draft completeness
-      currentScore = Math.round(50 + draftCompletenessRatio * 35);
-    } else {
-      // Reviewed: start at 95 if no issues, deduct for findings
-      let penalty = criticalCount * 35 + majorCount * 20 + minorCount * 8;
-      const suggestions = openFindings.filter((f) => f.severity === "suggestion").length;
-      penalty += suggestions * 3;
-
-      let base = 95 - penalty;
-      // Bonus for resolved issues
-      if (resolvedFindings.length > 0) {
-        base += Math.min(resolvedFindings.length * 5, 10);
+      if (previousScore !== null) {
+        delta = currentScore - previousScore;
+        if (delta > 0) trend = "better";
+        else if (delta < 0) trend = "regressed";
+        else trend = "stable";
+      } else if (resolvedFindings.length > 0 && openFindings.length === 0) {
+        delta = 15;
+        trend = "better";
+      } else if (hasReviewReport) {
+        trend = "stable";
       }
-      currentScore = Math.max(10, Math.min(100, Math.round(base)));
-    }
 
-    // Calculate previous score if previous review exists
-    let previousScore: number | null = null;
-    if (hasPreviousReviewReport) {
-      const prevOpen = matchingPrevFindings.filter((f) => f.resolution !== "resolved");
-      const prevCrit = prevOpen.filter((f) => f.severity === "critical").length;
-      const prevMajor = prevOpen.filter((f) => f.severity === "major").length;
-      const prevMinor = prevOpen.filter((f) => f.severity === "minor").length;
-      const prevPenalty = prevCrit * 35 + prevMajor * 20 + prevMinor * 8;
-      const prevBase = 95 - prevPenalty;
-      previousScore = Math.max(10, Math.min(100, Math.round(prevBase)));
-    }
+      const { level: scaleLevel, label: scaleLabel } =
+        getScaleLevel(currentScore);
 
-    // Determine trend and delta
-    let delta: number | null = null;
-    let trend: "better" | "regressed" | "stable" | "baseline" = "baseline";
-
-    if (previousScore !== null) {
-      delta = currentScore - previousScore;
-      if (delta > 0) trend = "better";
-      else if (delta < 0) trend = "regressed";
-      else trend = "stable";
-    } else if (resolvedFindings.length > 0 && openFindings.length === 0) {
-      delta = 15;
-      trend = "better";
-    } else if (hasReviewReport) {
-      trend = "stable";
-    }
-
-    const { level: scaleLevel, label: scaleLabel } = getScaleLevel(currentScore);
-
-    return {
-      id: criterion.id,
-      title: criterion.title,
-      description: criterion.description,
-      weight: criterion.weight,
-      position: criterion.position,
-      currentScore,
-      previousScore,
-      delta,
-      trend,
-      scaleLevel,
-      scaleLabel,
-      openFindingsCount: openFindings.length,
-      resolvedFindingsCount: resolvedFindings.length,
-      criticalCount,
-      majorCount,
-      minorCount,
-      findings: matchingFindings.map((f) => ({
-        id: f.id,
-        title: f.title,
-        severity: f.severity,
-        recommendedCorrection: f.recommendedCorrection,
-        resolution: f.resolution,
-      })),
-    };
-  });
+      return {
+        id: criterion.id,
+        title: criterion.title,
+        description: criterion.description,
+        weight: criterion.weight,
+        position: criterion.position,
+        currentScore,
+        previousScore,
+        delta,
+        trend,
+        scaleLevel,
+        scaleLabel,
+        openFindingsCount: openFindings.length,
+        resolvedFindingsCount: resolvedFindings.length,
+        criticalCount,
+        majorCount,
+        minorCount,
+        findings: matchingFindings.map((f) => ({
+          id: f.id,
+          title: f.title,
+          severity: f.severity,
+          recommendedCorrection: f.recommendedCorrection,
+          resolution: f.resolution,
+        })),
+      };
+    },
+  );
 
   // Calculate weighted overall score
   const totalWeight = criteria.reduce((sum, c) => sum + (c.weight ?? 0), 0);
@@ -288,8 +324,12 @@ export function computeRubricScale(
     else if (overallDelta < 0) overallTrend = "regressed";
     else overallTrend = "stable";
   } else {
-    const hasAnyImproving = criterionProgressList.some((c) => c.trend === "better");
-    const hasAnyRegressed = criterionProgressList.some((c) => c.trend === "regressed");
+    const hasAnyImproving = criterionProgressList.some(
+      (c) => c.trend === "better",
+    );
+    const hasAnyRegressed = criterionProgressList.some(
+      (c) => c.trend === "regressed",
+    );
     if (hasAnyImproving && !hasAnyRegressed) {
       overallTrend = "better";
       overallDelta = 10;
@@ -306,12 +346,19 @@ export function computeRubricScale(
 
   const counts = {
     total: criteria.length,
-    exemplary: criterionProgressList.filter((c) => c.scaleLevel === "exemplary").length,
-    proficient: criterionProgressList.filter((c) => c.scaleLevel === "proficient").length,
-    developing: criterionProgressList.filter((c) => c.scaleLevel === "developing").length,
-    at_risk: criterionProgressList.filter((c) => c.scaleLevel === "at_risk").length,
+    exemplary: criterionProgressList.filter((c) => c.scaleLevel === "exemplary")
+      .length,
+    proficient: criterionProgressList.filter(
+      (c) => c.scaleLevel === "proficient",
+    ).length,
+    developing: criterionProgressList.filter(
+      (c) => c.scaleLevel === "developing",
+    ).length,
+    at_risk: criterionProgressList.filter((c) => c.scaleLevel === "at_risk")
+      .length,
     improving: criterionProgressList.filter((c) => c.trend === "better").length,
-    regressed: criterionProgressList.filter((c) => c.trend === "regressed").length,
+    regressed: criterionProgressList.filter((c) => c.trend === "regressed")
+      .length,
     stable: criterionProgressList.filter((c) => c.trend === "stable").length,
   };
 

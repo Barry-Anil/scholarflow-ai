@@ -37,7 +37,8 @@ export function UploadDocumentForm({ courseId }: { courseId: string }) {
           className="cursor-pointer bg-white file:mr-3 file:border-0 file:bg-transparent file:text-sm file:font-semibold file:text-slate-700"
         />
         <p className="mt-2 text-xs leading-5 text-slate-500">
-          PDF, DOCX, TXT, Markdown, CSV, IPYNB, PY, JS, or TS. Maximum 25 MB per document.
+          PDF, DOCX, TXT, Markdown, CSV, IPYNB, PY, JS, or TS. Maximum 25 MB per
+          document.
         </p>
       </div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

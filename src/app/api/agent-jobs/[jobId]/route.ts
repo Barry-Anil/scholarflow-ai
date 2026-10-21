@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { processAgentJob } from "@/features/agents/persistent-workflow";
+import { getOwnedAgentJobStatus } from "@/features/agents/agent-job-queue";
 import { getOptionalUser } from "@/lib/auth/session";
 import { AppError, errorFingerprint, safeErrorMessage } from "@/lib/errors";
 import { logger } from "@/lib/logging/logger";
 import { requestLogContext } from "@/lib/observability/request-id";
-import { enforceUserRateLimit } from "@/lib/security/rate-limit";
 
 const jobIdSchema = z.uuid();
 
-export const maxDuration = 240;
-
-export async function POST(
+export async function GET(
   request: Request,
   context: { params: Promise<{ jobId: string }> },
 ) {
@@ -34,11 +31,8 @@ export async function POST(
   }
 
   try {
-    await enforceUserRateLimit(user.id, "worker.agent");
-    const result = await processAgentJob(parsed.data, user.id);
-    return NextResponse.json(result, {
-      status: result.status === "processing" ? 202 : 200,
-    });
+    const result = await getOwnedAgentJobStatus(parsed.data, user.id);
+    return NextResponse.json(result);
   } catch (error) {
     logger.error("agent.job_request_failed", {
       ...requestLogContext(request),

@@ -364,7 +364,8 @@ function RubricScaleDrawerContent({
   const filteredCriteria = useMemo(() => {
     return rubricSummary.criteria.filter((c) => {
       if (filter === "at_risk" && c.scaleLevel !== "at_risk") return false;
-      if (filter === "developing" && c.scaleLevel !== "developing") return false;
+      if (filter === "developing" && c.scaleLevel !== "developing")
+        return false;
       if (
         filter === "proficient" &&
         c.scaleLevel !== "proficient" &&
@@ -398,7 +399,9 @@ function RubricScaleDrawerContent({
               <div className="mt-1 flex items-baseline gap-3">
                 <span className="text-4xl font-extrabold tracking-tight text-white">
                   {rubricSummary.overallScore}
-                  <span className="text-xl font-medium text-slate-400">/100</span>
+                  <span className="text-xl font-medium text-slate-400">
+                    /100
+                  </span>
                 </span>
                 <span
                   className={cn(
@@ -482,14 +485,17 @@ function RubricScaleDrawerContent({
               {/* Dynamic Score Indicator Needle */}
               <div
                 className="absolute top-0 bottom-0 w-2.5 rounded-full bg-white shadow-lg ring-2 ring-teal-400 transition-all duration-500 ease-out -translate-x-1/2"
-                style={{ left: `${Math.max(4, Math.min(96, rubricSummary.overallScore))}%` }}
+                style={{
+                  left: `${Math.max(4, Math.min(96, rubricSummary.overallScore))}%`,
+                }}
               />
             </div>
 
             <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
               <span>0 pts</span>
               <span className="font-semibold text-white">
-                Current: {rubricSummary.overallScore} pts ({rubricSummary.overallScaleLabel})
+                Current: {rubricSummary.overallScore} pts (
+                {rubricSummary.overallScaleLabel})
               </span>
               <span>100 pts</span>
             </div>
@@ -498,25 +504,33 @@ function RubricScaleDrawerContent({
           {/* Breakdown counts */}
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <div className="rounded-lg bg-white/5 p-2 text-center">
-              <p className="text-[10px] text-emerald-400 font-semibold">Exemplary</p>
+              <p className="text-[10px] text-emerald-400 font-semibold">
+                Exemplary
+              </p>
               <p className="text-base font-bold text-white">
                 {rubricSummary.counts.exemplary}
               </p>
             </div>
             <div className="rounded-lg bg-white/5 p-2 text-center">
-              <p className="text-[10px] text-teal-400 font-semibold">Proficient</p>
+              <p className="text-[10px] text-teal-400 font-semibold">
+                Proficient
+              </p>
               <p className="text-base font-bold text-white">
                 {rubricSummary.counts.proficient}
               </p>
             </div>
             <div className="rounded-lg bg-white/5 p-2 text-center">
-              <p className="text-[10px] text-amber-400 font-semibold">Developing</p>
+              <p className="text-[10px] text-amber-400 font-semibold">
+                Developing
+              </p>
               <p className="text-base font-bold text-white">
                 {rubricSummary.counts.developing}
               </p>
             </div>
             <div className="rounded-lg bg-white/5 p-2 text-center">
-              <p className="text-[10px] text-rose-400 font-semibold">Needs attention</p>
+              <p className="text-[10px] text-rose-400 font-semibold">
+                Needs attention
+              </p>
               <p className="text-base font-bold text-white">
                 {rubricSummary.counts.at_risk}
               </p>
@@ -580,7 +594,8 @@ function RubricScaleDrawerContent({
               )}
             >
               Proficient / Exemplary (
-              {rubricSummary.counts.proficient + rubricSummary.counts.exemplary})
+              {rubricSummary.counts.proficient + rubricSummary.counts.exemplary}
+              )
             </button>
             {rubricSummary.counts.improving > 0 && (
               <button
@@ -646,8 +661,14 @@ function RubricScaleDrawerContent({
   );
 }
 
-function CriterionProgressCard({ criterion }: { criterion: CriterionProgress }) {
-  const [isExpanded, setIsExpanded] = useState(criterion.scaleLevel === "at_risk");
+function CriterionProgressCard({
+  criterion,
+}: {
+  criterion: CriterionProgress;
+}) {
+  const [isExpanded, setIsExpanded] = useState(
+    criterion.scaleLevel === "at_risk",
+  );
   const [manualRating, setManualRating] = useState<ScaleLevel | null>(null);
 
   const activeLevel = manualRating ?? criterion.scaleLevel;
@@ -657,9 +678,11 @@ function CriterionProgressCard({ criterion }: { criterion: CriterionProgress }) 
       className={cn(
         "rounded-2xl border transition-all duration-200 bg-white p-4 shadow-2xs",
         activeLevel === "at_risk" && "border-rose-200 hover:border-rose-300",
-        activeLevel === "developing" && "border-amber-200 hover:border-amber-300",
+        activeLevel === "developing" &&
+          "border-amber-200 hover:border-amber-300",
         activeLevel === "proficient" && "border-teal-200 hover:border-teal-300",
-        activeLevel === "exemplary" && "border-emerald-200 hover:border-emerald-300",
+        activeLevel === "exemplary" &&
+          "border-emerald-200 hover:border-emerald-300",
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -668,7 +691,8 @@ function CriterionProgressCard({ criterion }: { criterion: CriterionProgress }) 
             <span
               className={cn(
                 "rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                activeLevel === "exemplary" && "bg-emerald-100 text-emerald-800",
+                activeLevel === "exemplary" &&
+                  "bg-emerald-100 text-emerald-800",
                 activeLevel === "proficient" && "bg-teal-100 text-teal-800",
                 activeLevel === "developing" && "bg-amber-100 text-amber-800",
                 activeLevel === "at_risk" && "bg-rose-100 text-rose-800",
@@ -717,7 +741,9 @@ function CriterionProgressCard({ criterion }: { criterion: CriterionProgress }) 
         <div className="flex items-center justify-between text-[11px]">
           <span className="font-medium text-slate-500">
             Criterion score:{" "}
-            <strong className="text-slate-900">{criterion.currentScore}/100</strong>
+            <strong className="text-slate-900">
+              {criterion.currentScore}/100
+            </strong>
           </span>
           {criterion.previousScore !== null && (
             <span className="text-slate-400 text-[10px]">
@@ -785,32 +811,41 @@ function CriterionProgressCard({ criterion }: { criterion: CriterionProgress }) 
       {/* Interactive Self-Assessment and Details Toggle */}
       <div className="mt-3.5 flex items-center justify-between border-t border-slate-100 pt-3">
         <div className="flex items-center gap-1 text-[10px] text-slate-500">
-          <span className="font-semibold uppercase tracking-wider">Scale band:</span>
+          <span className="font-semibold uppercase tracking-wider">
+            Scale band:
+          </span>
           <div className="flex items-center gap-1">
-            {(["at_risk", "developing", "proficient", "exemplary"] as ScaleLevel[]).map(
-              (lvl) => (
-                <button
-                  key={lvl}
-                  type="button"
-                  onClick={() => setManualRating(lvl === manualRating ? null : lvl)}
-                  title={`Set manual target / self-assessment: ${lvl}`}
-                  className={cn(
-                    "rounded px-1.5 py-0.5 font-medium transition-all",
-                    activeLevel === lvl
-                      ? "bg-slate-900 text-white font-bold"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200",
-                  )}
-                >
-                  {lvl === "at_risk"
-                    ? "At Risk"
-                    : lvl === "developing"
-                      ? "Developing"
-                      : lvl === "proficient"
-                        ? "Proficient"
-                        : "Exemplary"}
-                </button>
-              ),
-            )}
+            {(
+              [
+                "at_risk",
+                "developing",
+                "proficient",
+                "exemplary",
+              ] as ScaleLevel[]
+            ).map((lvl) => (
+              <button
+                key={lvl}
+                type="button"
+                onClick={() =>
+                  setManualRating(lvl === manualRating ? null : lvl)
+                }
+                title={`Set manual target / self-assessment: ${lvl}`}
+                className={cn(
+                  "rounded px-1.5 py-0.5 font-medium transition-all",
+                  activeLevel === lvl
+                    ? "bg-slate-900 text-white font-bold"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                )}
+              >
+                {lvl === "at_risk"
+                  ? "At Risk"
+                  : lvl === "developing"
+                    ? "Developing"
+                    : lvl === "proficient"
+                      ? "Proficient"
+                      : "Exemplary"}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -867,13 +902,16 @@ function AgentActivityDrawerContent({
     createdAt: Date | string;
   }>;
 }) {
-  const [filterType, setFilterType] = useState<"all" | "review" | "research" | "draft">("all");
+  const [filterType, setFilterType] = useState<
+    "all" | "review" | "research" | "draft"
+  >("all");
 
   const filteredEvents = useMemo(() => {
     if (filterType === "all") return events;
-    return events.filter((e) =>
-      e.eventType.toLowerCase().includes(filterType) ||
-      e.message.toLowerCase().includes(filterType),
+    return events.filter(
+      (e) =>
+        e.eventType.toLowerCase().includes(filterType) ||
+        e.message.toLowerCase().includes(filterType),
     );
   }, [events, filterType]);
 
@@ -978,8 +1016,8 @@ function AgentActivityDrawerContent({
         </ol>
       ) : (
         <div className="rounded-xl bg-slate-50 p-6 text-center text-sm text-slate-500">
-          No agent activity events recorded yet. Run Agent C research, Agent B drafting,
-          or Agent A review to generate live activity.
+          No agent activity events recorded yet. Run Agent C research, Agent B
+          drafting, or Agent A review to generate live activity.
         </div>
       )}
     </div>
@@ -1132,7 +1170,9 @@ export function RubricSidebarCard({
         <div className="flex items-center justify-between text-xs">
           <span className="font-semibold text-slate-700">
             Performance scale:{" "}
-            <strong className="text-teal-700">{summary.overallScore}/100</strong>
+            <strong className="text-teal-700">
+              {summary.overallScore}/100
+            </strong>
           </span>
           {summary.overallTrend === "better" && (
             <span className="flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
@@ -1254,4 +1294,3 @@ export function RubricSidebarCard({
     </div>
   );
 }
-

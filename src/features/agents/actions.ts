@@ -47,7 +47,7 @@ export async function startResearchAgentAction(
     await enforceUserRateLimit(user.id, "agent.enqueue");
     await requireAssignmentAccess(assignmentId, user.id, "edit");
     const result = await enqueueResearchAgent(assignmentId, user.id);
-    message = `Agent C queued ${result.jobCount} research task${result.jobCount === 1 ? "" : "s"}. Keep this page open while they finish.`;
+    message = `Agent C queued ${result.jobCount} research task${result.jobCount === 1 ? "" : "s"}. You may leave this page while the worker completes them.`;
   } catch (error) {
     status = "error";
     message = safeErrorMessage(error);
@@ -72,7 +72,7 @@ export async function startReviewAgentAction(
     await enforceUserRateLimit(user.id, "agent.enqueue");
     await requireAssignmentAccess(assignmentId, user.id, "edit");
     const result = await enqueueReviewAgent(assignmentId, user.id);
-    message = `Agent A queued ${result.jobCount} independent review task${result.jobCount === 1 ? "" : "s"}. Keep this page open while they finish.`;
+    message = `Agent A queued ${result.jobCount} independent review task${result.jobCount === 1 ? "" : "s"}. You may leave this page while the worker completes them.`;
   } catch (error) {
     status = "error";
     message = safeErrorMessage(error);
@@ -239,7 +239,7 @@ export async function startStudentAgentAction(
     await enforceUserRateLimit(user.id, "agent.enqueue");
     await requireAssignmentAccess(assignmentId, user.id, "edit");
     const result = await enqueueStudentAgent(assignmentId, user.id);
-    message = `Agent B queued ${result.jobCount} drafting task${result.jobCount === 1 ? "" : "s"}. Keep this page open while they finish.`;
+    message = `Agent B queued ${result.jobCount} drafting task${result.jobCount === 1 ? "" : "s"}. You may leave this page while the worker completes them.`;
   } catch (error) {
     status = "error";
     message = safeErrorMessage(error);

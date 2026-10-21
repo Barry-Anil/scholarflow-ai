@@ -114,14 +114,34 @@ export const processingJobs = pgTable(
       .notNull(),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
     lockedBy: varchar("locked_by", { length: 160 }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    lastErrorCode: varchar("last_error_code", { length: 100 }),
     lastError: text("last_error"),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     ...timestamps(),
   },
   (table) => [
     index("processing_jobs_claim_idx").on(table.status, table.availableAt),
+    index("processing_jobs_lease_idx").on(table.status, table.leaseExpiresAt),
     index("processing_jobs_owner_idx").on(table.ownerId),
   ],
+);
+
+export const processingJobDiagnostics = pgTable(
+  "processing_job_diagnostics",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    jobId: uuid("job_id")
+      .notNull()
+      .references(() => processingJobs.id, { onDelete: "cascade" }),
+    attempt: integer("attempt").notNull(),
+    errorCode: varchar("error_code", { length: 100 }).notNull(),
+    detail: text("detail").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("processing_job_diagnostics_job_idx").on(table.jobId)],
 );
 
 export type Document = typeof documents.$inferSelect;

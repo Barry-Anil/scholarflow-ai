@@ -61,4 +61,3 @@ export function resolveAcceptedDocumentMime(
   if (isAcceptedDocumentMime(reportedMime)) return reportedMime;
   return null;
 }
-
