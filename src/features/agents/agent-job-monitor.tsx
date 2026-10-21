@@ -1,8 +1,9 @@
 "use client";
 
-import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+import { AgentWorkingAnimation } from "./agent-working-animation";
 
 type AgentJobMonitorProps = {
   jobIds: string[];
@@ -95,15 +96,19 @@ export function AgentJobMonitor({
       className={
         error
           ? "rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
-          : "flex items-center gap-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800"
+          : "flex justify-center rounded-xl border border-teal-200 bg-teal-50 px-4 py-3"
       }
     >
-      {!error && <LoaderCircle className="size-4 shrink-0 animate-spin" />}
-      <span>
-        {error
-          ? error
-          : `${agentLabel(operation)} is processing task ${Math.min(completed + 1, jobIds.length)} of ${jobIds.length}. You can safely resume by reopening this page.`}
-      </span>
+      {error ? (
+        error
+      ) : (
+        <>
+          <AgentWorkingAnimation />
+          <span className="sr-only">
+            {`${agentLabel(operation)} is processing task ${Math.min(completed + 1, jobIds.length)} of ${jobIds.length}. You can safely resume by reopening this page.`}
+          </span>
+        </>
+      )}
     </div>
   );
 }
