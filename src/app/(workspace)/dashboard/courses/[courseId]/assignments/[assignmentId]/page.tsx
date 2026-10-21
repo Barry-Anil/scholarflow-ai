@@ -62,6 +62,7 @@ type PageProps = {
   }>;
 };
 
+// The workspace UI is rendered from persisted assignment and agent state.
 export default function AssignmentWorkspacePage(props: PageProps) {
   return (
     <Suspense fallback={<WorkspaceLoadingState />}>

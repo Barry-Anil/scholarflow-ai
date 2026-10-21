@@ -36,7 +36,8 @@ const nextConfig: NextConfig = {
           "form-action 'self'",
           "frame-ancestors 'none'",
           "object-src 'none'",
-          "script-src 'self' 'unsafe-inline'",
+          // React dev mode needs eval to reconstruct server callstacks; production never uses it.
+          `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: blob:",
           "font-src 'self' data:",
