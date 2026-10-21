@@ -1,14 +1,11 @@
 import {
   ArrowLeft,
-  Activity,
   AlertTriangle,
   Bot,
   BookOpenCheck,
   CalendarDays,
   Check,
   FileCheck2,
-  FileText,
-  ExternalLink,
   History,
   ListChecks,
   RotateCcw,
@@ -44,7 +41,6 @@ import { DraftEditor } from "@/features/assignments/draft-editor";
 import {
   WorkspaceDrawerManager,
   DrawerTriggerButton,
-  RubricSidebarCard,
 } from "@/features/assignments/workspace-drawer";
 import { ApprovalExportPanel } from "@/features/exports/approval-export-panel";
 import { evaluateApprovalReadiness } from "@/features/exports/approval";
@@ -593,129 +589,6 @@ async function WorkspaceContent({ params, searchParams }: PageProps) {
                     Run Agent C to retrieve traceable evidence before drafting.
                   </p>
                 )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <CardTitle>Marking rubric</CardTitle>
-                    <CardDescription>
-                      Keep each answer aligned with how it will be assessed.
-                    </CardDescription>
-                  </div>
-                  <DrawerTriggerButton
-                    tab="rubric"
-                    variant="ghost"
-                    size="sm"
-                    className="text-teal-700 hover:text-teal-900"
-                  >
-                    <ExternalLink className="size-3.5" /> Scale Drawer
-                  </DrawerTriggerButton>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <RubricSidebarCard
-                  criteria={data.criteria}
-                  hasDraft={Boolean(data.latestDraft)}
-                  answers={data.answers}
-                  reviewItems={data.reviewItems}
-                  previousReviewItems={data.previousReviewItems}
-                  hasReviewReport={Boolean(data.latestReviewReport)}
-                  hasPreviousReviewReport={Boolean(data.previousReviewReport)}
-                />
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle className="flex items-center gap-2">
-                    <Activity className="size-5 text-teal-600" /> Agent activity
-                  </CardTitle>
-                  <DrawerTriggerButton
-                    tab="activity"
-                    variant="ghost"
-                    size="sm"
-                    className="text-teal-700 hover:text-teal-900"
-                  >
-                    <ExternalLink className="size-3.5" /> Expand
-                  </DrawerTriggerButton>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {data.events.length ? (
-                  <ol className="space-y-4">
-                    {data.events.slice(0, 8).map((event) => (
-                      <li
-                        key={event.id}
-                        className="border-l-2 border-teal-100 pl-3"
-                      >
-                        <p className="text-xs leading-5 text-slate-700">
-                          {event.message}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          {formatTimestamp(event.createdAt)}
-                        </p>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    No agent operations have run yet.
-                  </p>
-                )}
-                <DrawerTriggerButton
-                  tab="activity"
-                  variant="secondary"
-                  size="sm"
-                  className="mt-4 w-full"
-                >
-                  <Activity className="size-4 text-teal-600" />
-                  Open full activity drawer
-                </DrawerTriggerButton>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2">
-                  <CardTitle>Original brief</CardTitle>
-                  <DrawerTriggerButton
-                    tab="brief"
-                    variant="ghost"
-                    size="sm"
-                    className="text-teal-700 hover:text-teal-900"
-                  >
-                    <ExternalLink className="size-3.5" /> Expand
-                  </DrawerTriggerButton>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="max-h-80 overflow-y-auto whitespace-pre-wrap text-sm leading-6 text-slate-600">
-                  {data.assignment.briefMarkdown}
-                </div>
-                <div className="mt-5 grid grid-cols-2 gap-2">
-                  <Button
-                    asChild
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                  >
-                    <Link href={`/dashboard/courses/${courseId}/knowledge`}>
-                      <ExternalLink className="size-4" /> Evidence
-                    </Link>
-                  </Button>
-                  <DrawerTriggerButton
-                    tab="brief"
-                    variant="secondary"
-                    size="sm"
-                    className="w-full"
-                  >
-                    <FileText className="size-4 text-teal-600" /> Brief drawer
-                  </DrawerTriggerButton>
-                </div>
               </CardContent>
             </Card>
           </aside>

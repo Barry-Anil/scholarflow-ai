@@ -129,8 +129,6 @@ test("creates, structures, and versions an assignment draft in Chrome", async ({
   ).toBeVisible();
   await expect(page.getByText("2 questions")).toBeVisible();
   await expect(page.getByText("3 rubric criteria")).toBeVisible();
-  await expect(page.getByText("Critical analysis")).toBeVisible();
-  await expect(page.getByText("40%")).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Run Agent C research" }),
   ).toBeVisible();

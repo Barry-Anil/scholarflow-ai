@@ -214,7 +214,7 @@ Last updated: 2026-10-09
 ### Assignment workspace and versioned editor
 
 Files: `src/features/assignments/create-assignment-form.tsx`, `src/features/assignments/draft-editor.tsx`, `src/app/(workspace)/dashboard/courses/[courseId]/assignments/[assignmentId]/page.tsx`
-Last updated: 2026-10-09
+Last updated: 2026-10-21
 
 | Property         | Class                                                                                   |
 | ---------------- | --------------------------------------------------------------------------------------- |
@@ -228,7 +228,7 @@ Last updated: 2026-10-09
 | Shadow           | `shadow-sm` question/cards; `shadow-lg` save panel                                      |
 | Accent usage     | Teal identifies parsing context, criteria checks, workflow actions, and saved status    |
 
-**Pattern notes:** Preserve the source brief in a quiet side card while drafting in the primary column. Question cards always show their number, prompt, optional word limit, requirements, and a large monospace Markdown field. Every explicit save creates a recoverable version and confirms the version/word count in a server-rendered teal status panel. The save panel is static on narrow screens and sticky only from `sm` upward so it never obscures mobile editing.
+**Pattern notes:** Keep the assignment side rail focused on active workflow controls, evidence, approval, and revision history. Rubric details, agent activity, and the original brief live in the shared workspace drawer instead of duplicated preview cards. Question cards always show their number, prompt, optional word limit, requirements, and a large monospace Markdown field. Every explicit save creates a recoverable version and confirms the version/word count in a server-rendered teal status panel. The save panel is static on narrow screens and sticky only from `sm` upward so it never obscures mobile editing.
 
 ### Agent controls, evidence, and activity
 
