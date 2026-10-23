@@ -7,3 +7,4 @@ export * from "./enums";
 export * from "./knowledge";
 export * from "./reviews";
 export * from "./security";
+export * from "./study";

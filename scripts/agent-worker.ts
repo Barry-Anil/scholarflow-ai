@@ -8,14 +8,18 @@ import {
   getAgentWorkerConfig,
 } from "@/features/agents/agent-job-queue";
 import { processClaimedAgentJob } from "@/features/agents/persistent-workflow";
+import { STUDY_DOCUMENT_JOB_TYPE } from "@/features/study-tutor/constants";
+import { processClaimedStudyDocumentJob } from "@/features/study-tutor/processor";
 import {
   markWorkerStopped,
   recordWorkerHeartbeat,
 } from "@/features/agents/worker-heartbeat";
-import { closeDatabase } from "@/lib/db";
+import { closeDatabase, getDatabase } from "@/lib/db";
+import { processingJobs } from "@/lib/db/schema";
 import { getDatabaseEnv } from "@/lib/env/server";
 import { errorFingerprint } from "@/lib/errors";
 import { logger } from "@/lib/logging/logger";
+import { eq } from "drizzle-orm";
 
 const singletonLockName = "scholarflow-agent-worker-singleton";
 const workerId = `${hostname()}:${process.pid}:${randomUUID()}`;
@@ -87,10 +91,22 @@ async function main() {
       currentJobId = claimed.jobId;
       await recordWorkerHeartbeat(workerId, currentJobId);
       try {
-        const result = await processClaimedAgentJob(claimed.jobId, workerId, {
-          leaseMs: config.leaseMs,
-          heartbeatMs: config.heartbeatMs,
-        });
+        const [job] = await getDatabase()
+          .select({ type: processingJobs.type })
+          .from(processingJobs)
+          .where(eq(processingJobs.id, claimed.jobId))
+          .limit(1);
+        const result =
+          job?.type === STUDY_DOCUMENT_JOB_TYPE
+            ? await processClaimedStudyDocumentJob(claimed.jobId, workerId, {
+                leaseMs: config.leaseMs,
+                heartbeatMs: config.heartbeatMs,
+                exhausted: claimed.exhausted,
+              })
+            : await processClaimedAgentJob(claimed.jobId, workerId, {
+                leaseMs: config.leaseMs,
+                heartbeatMs: config.heartbeatMs,
+              });
         logger.info("agent.job_worker_result", {
           workerId,
           jobId: claimed.jobId,

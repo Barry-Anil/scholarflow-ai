@@ -24,7 +24,11 @@ grant select on table
   public.usage_records,
   public.processing_job_diagnostics,
   public.processing_jobs,
-  public.agent_worker_heartbeats
+  public.agent_worker_heartbeats,
+  public.study_sessions,
+  public.study_documents,
+  public.study_sections,
+  public.study_chunks
 to scholarflow_agent_worker;
 
 grant insert, update on table
@@ -41,5 +45,14 @@ grant insert, update on table
   public.usage_records,
   public.processing_job_diagnostics,
   public.processing_jobs,
-  public.agent_worker_heartbeats
+  public.agent_worker_heartbeats,
+  public.study_sessions,
+  public.study_documents,
+  public.study_sections,
+  public.study_chunks
+to scholarflow_agent_worker;
+
+grant delete on table
+  public.study_sections,
+  public.study_chunks
 to scholarflow_agent_worker;

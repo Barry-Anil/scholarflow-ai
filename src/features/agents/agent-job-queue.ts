@@ -16,6 +16,7 @@ import { z } from "zod";
 import { getDatabase } from "@/lib/db";
 import { processingJobs } from "@/lib/db/schema";
 import { AppError } from "@/lib/errors";
+import { STUDY_DOCUMENT_JOB_TYPE } from "@/features/study-tutor/constants";
 import {
   DRAFT_JOB_TYPE,
   RESEARCH_JOB_TYPE,
@@ -28,6 +29,11 @@ export const agentJobTypes = [
   DRAFT_JOB_TYPE,
   REVIEW_JOB_TYPE,
   REVISION_JOB_TYPE,
+] as const;
+
+export const workerJobTypes = [
+  ...agentJobTypes,
+  STUDY_DOCUMENT_JOB_TYPE,
 ] as const;
 
 const workerEnvSchema = z
@@ -66,7 +72,7 @@ export async function claimNextAgentJob(workerId: string, leaseMs: number) {
               isNotNull(processingJobs.lockedBy),
             ),
           ),
-          inArray(processingJobs.type, [...agentJobTypes]),
+          inArray(processingJobs.type, [...workerJobTypes]),
           sql`${processingJobs.leaseExpiresAt} > now()`,
         ),
       )
@@ -89,7 +95,7 @@ export async function claimNextAgentJob(workerId: string, leaseMs: number) {
               isNotNull(processingJobs.lockedBy),
             ),
           ),
-          inArray(processingJobs.type, [...agentJobTypes]),
+          inArray(processingJobs.type, [...workerJobTypes]),
           or(
             isNull(processingJobs.leaseExpiresAt),
             lte(processingJobs.leaseExpiresAt, new Date()),
@@ -130,7 +136,7 @@ export async function claimNextAgentJob(workerId: string, leaseMs: number) {
       .from(processingJobs)
       .where(
         and(
-          inArray(processingJobs.type, [...agentJobTypes]),
+          inArray(processingJobs.type, [...workerJobTypes]),
           or(
             sql`${processingJobs.attempts} < ${processingJobs.maxAttempts}`,
             eq(processingJobs.lastErrorCode, "WORKER_FINALIZATION_RECOVERY"),
