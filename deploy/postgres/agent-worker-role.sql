@@ -23,7 +23,8 @@ grant select on table
   public.agent_run_events,
   public.usage_records,
   public.processing_job_diagnostics,
-  public.processing_jobs
+  public.processing_jobs,
+  public.agent_worker_heartbeats
 to scholarflow_agent_worker;
 
 grant insert, update on table
@@ -39,5 +40,6 @@ grant insert, update on table
   public.agent_run_events,
   public.usage_records,
   public.processing_job_diagnostics,
-  public.processing_jobs
+  public.processing_jobs,
+  public.agent_worker_heartbeats
 to scholarflow_agent_worker;

@@ -8,6 +8,10 @@ import {
   getAgentWorkerConfig,
 } from "@/features/agents/agent-job-queue";
 import { processClaimedAgentJob } from "@/features/agents/persistent-workflow";
+import {
+  markWorkerStopped,
+  recordWorkerHeartbeat,
+} from "@/features/agents/worker-heartbeat";
 import { closeDatabase } from "@/lib/db";
 import { getDatabaseEnv } from "@/lib/env/server";
 import { errorFingerprint } from "@/lib/errors";
@@ -54,7 +58,10 @@ async function main() {
     pollMs: config.pollMs,
   });
 
+  let currentJobId: string | null = null;
+  await recordWorkerHeartbeat(workerId, null);
   const lockHeartbeat = setInterval(() => {
+    void recordWorkerHeartbeat(workerId, currentJobId);
     void lockConnection.unsafe("select 1").catch((error) => {
       stopping = true;
       logger.error("agent.worker_singleton_lock_lost", {
@@ -77,6 +84,8 @@ async function main() {
         exhaustedLease: claimed.exhausted,
       });
       const startedAt = performance.now();
+      currentJobId = claimed.jobId;
+      await recordWorkerHeartbeat(workerId, currentJobId);
       try {
         const result = await processClaimedAgentJob(claimed.jobId, workerId, {
           leaseMs: config.leaseMs,
@@ -96,10 +105,14 @@ async function main() {
           ...errorFingerprint(error),
         });
         await delay(config.pollMs);
+      } finally {
+        currentJobId = null;
+        await recordWorkerHeartbeat(workerId, null);
       }
     }
   } finally {
     clearInterval(lockHeartbeat);
+    await markWorkerStopped(workerId);
     try {
       await lockConnection.unsafe(
         `select pg_advisory_unlock(hashtext('${singletonLockName}'))`,

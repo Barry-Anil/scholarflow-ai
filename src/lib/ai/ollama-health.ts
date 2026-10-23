@@ -25,6 +25,60 @@ export async function checkOllamaHealth(
   model: string,
   accessCredentials?: OllamaAccessCredentials,
 ) {
+  const tags = await fetchOllamaTags(
+    baseUrl,
+    timeoutMs,
+    model,
+    accessCredentials,
+  );
+  if (!tags.models.includes(model)) {
+    throw ollamaModelUnavailable(tags.context);
+  }
+  logOllamaCompleted(tags.context, tags.httpStatus);
+  return {
+    status: "ready" as const,
+    model,
+    latencyMs: Math.round(performance.now() - tags.context.startedAt),
+  };
+}
+
+/**
+ * Lists installed model names with one tags request. Reaching the server does
+ * not prove generation works; callers must report that separately.
+ */
+export async function listOllamaModels(
+  baseUrl: string,
+  timeoutMs: number,
+  accessCredentials?: OllamaAccessCredentials,
+) {
+  const tags = await fetchOllamaTags(
+    baseUrl,
+    timeoutMs,
+    "tags",
+    accessCredentials,
+  );
+  logOllamaCompleted(tags.context, tags.httpStatus);
+  return {
+    models: tags.models,
+    latencyMs: Math.round(performance.now() - tags.context.startedAt),
+  };
+}
+
+/** Ollama resolves an untagged model name to its ":latest" tag. */
+export function isOllamaModelInstalled(installed: string[], model: string) {
+  return installed.some(
+    (candidate) =>
+      candidate === model ||
+      (!model.includes(":") && candidate === `${model}:latest`),
+  );
+}
+
+async function fetchOllamaTags(
+  baseUrl: string,
+  timeoutMs: number,
+  model: string,
+  accessCredentials?: OllamaAccessCredentials,
+) {
   const url = new URL(baseUrl);
   const healthTimeoutMs = Math.min(timeoutMs, 15_000);
   const startedAt = performance.now();
@@ -67,13 +121,9 @@ export async function checkOllamaHealth(
       response.status,
     );
   }
-  if (!payload.data.models.some((candidate) => candidate.name === model)) {
-    throw ollamaModelUnavailable(context);
-  }
-  logOllamaCompleted(context, response.status);
   return {
-    status: "ready" as const,
-    model,
-    latencyMs: Math.round(performance.now() - startedAt),
+    models: payload.data.models.map((candidate) => candidate.name),
+    context,
+    httpStatus: response.status,
   };
 }

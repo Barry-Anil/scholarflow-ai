@@ -57,6 +57,13 @@
       "when": 1792524449072,
       "tag": "0007_mysterious_stature",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792759752330,
+      "tag": "0008_agent_worker_heartbeats",
+      "breakpoints": true
     }
   ]
 }

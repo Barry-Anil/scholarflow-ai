@@ -53,6 +53,14 @@ import {
 import { draftQuestionWithEvidence } from "./student";
 import { renewAgentJobLease } from "./agent-job-queue";
 import {
+  instrumentProvider,
+  questionLabel,
+  recordAgentStage,
+  runWithAgentJobTelemetry,
+  type AgentJobTelemetryContext,
+  type AgentStagePrefix,
+} from "./agent-telemetry";
+import {
   agentDiagnostic,
   agentPublicError,
   agentRetryDelayMs,
@@ -469,6 +477,7 @@ export async function processClaimedAgentJob(
   }, options.heartbeatMs);
 
   let contextValidated = false;
+  let telemetry: AgentJobTelemetryContext | null = null;
   try {
     const recoveringFinalization =
       job.lastErrorCode === "WORKER_FINALIZATION_RECOVERY";
@@ -533,23 +542,46 @@ export async function processClaimedAgentJob(
       .where(
         and(eq(agentRuns.id, payload.runId), eq(agentRuns.ownerId, ownerId)),
       );
-    if (job.type === RESEARCH_JOB_TYPE) {
-      await processResearchQuestion(job.assignmentId!, ownerId, payload);
-    } else if (job.type === DRAFT_JOB_TYPE) {
-      await processDraftQuestion(job.assignmentId!, ownerId, payload);
-    } else if (job.type === REVIEW_JOB_TYPE) {
-      await processReviewQuestionJob(
-        job.assignmentId!,
-        ownerId,
-        asReviewPayload(payload),
+    const [questionRow] = await db
+      .select({ position: assignmentQuestions.position })
+      .from(assignmentQuestions)
+      .where(eq(assignmentQuestions.id, payload.questionId))
+      .limit(1);
+    telemetry = {
+      prefix: stagePrefix(job.type),
+      runId: payload.runId,
+      assignmentId: job.assignmentId!,
+      ownerId,
+      jobId: job.id,
+      questionId: payload.questionId,
+      questionNumber: questionRow ? questionRow.position + 1 : null,
+      attempt: job.attempts,
+      maxAttempts: job.maxAttempts,
+    };
+    const jobTelemetry = telemetry;
+    await runWithAgentJobTelemetry(jobTelemetry, async () => {
+      await recordAgentStage(
+        "question_started",
+        `${agentLabelFor(jobTelemetry.prefix)} started ${questionLabel(jobTelemetry)} (attempt ${job.attempts} of ${job.maxAttempts}).`,
       );
-    } else {
-      await processRevisionQuestionJob(
-        job.assignmentId!,
-        ownerId,
-        asRevisionPayload(payload),
-      );
-    }
+      if (job.type === RESEARCH_JOB_TYPE) {
+        await processResearchQuestion(job.assignmentId!, ownerId, payload);
+      } else if (job.type === DRAFT_JOB_TYPE) {
+        await processDraftQuestion(job.assignmentId!, ownerId, payload);
+      } else if (job.type === REVIEW_JOB_TYPE) {
+        await processReviewQuestionJob(
+          job.assignmentId!,
+          ownerId,
+          asReviewPayload(payload),
+        );
+      } else {
+        await processRevisionQuestionJob(
+          job.assignmentId!,
+          ownerId,
+          asRevisionPayload(payload),
+        );
+      }
+    });
     if (
       leaseLost ||
       !(await renewAgentJobLease(job.id, workerId, options.leaseMs))
@@ -582,7 +614,8 @@ export async function processClaimedAgentJob(
       );
     }
     const remaining = await remainingJobs(payload.runId);
-    if (!remaining) {
+    // A run stopped by an editor keeps its saved tasks but is never finalized.
+    if (!remaining && !(await isRunCancelled(payload.runId))) {
       await finalizeAgentRun(job, ownerId, payload);
     }
     await db
@@ -597,6 +630,21 @@ export async function processClaimedAgentJob(
       );
     return { status: "completed" as const, completed: !remaining, remaining };
   } catch (error) {
+    // An editor stopped or re-queued this job while it ran: the worker no
+    // longer owns it, so it must neither retry nor fail it.
+    const [current] = await db
+      .select({ lockedBy: processingJobs.lockedBy })
+      .from(processingJobs)
+      .where(eq(processingJobs.id, job.id))
+      .limit(1);
+    if (current?.lockedBy !== workerId) {
+      logger.info("agent.job_released_by_editor", {
+        jobId: job.id,
+        workerId,
+        ...errorFingerprint(error),
+      });
+      return { status: "released" as const };
+    }
     const retryable = isRetryableAgentError(error);
     const recoveringFinalization =
       job.lastErrorCode === "WORKER_FINALIZATION_RECOVERY";
@@ -606,6 +654,16 @@ export async function processClaimedAgentJob(
     ) {
       const delayMs = agentRetryDelayMs(job.attempts);
       await requeueJob(job, workerId, error, delayMs, recoveringFinalization);
+      if (telemetry) {
+        const errorCode =
+          error instanceof AppError ? error.code : "UNEXPECTED_ERROR";
+        await recordAgentStage(
+          "retry_scheduled",
+          `Attempt ${job.attempts} of ${job.maxAttempts} for ${questionLabel(telemetry)} failed (${errorCode}); retrying in ${Math.round(delayMs / 1000)}s.`,
+          { errorCode, retryInMs: delayMs },
+          telemetry,
+        );
+      }
       return { status: "queued" as const, retryInMs: delayMs };
     }
     await failRun(job, payload, ownerId, workerId, error, contextValidated);
@@ -843,6 +901,11 @@ async function processResearchQuestion(
     )
     .orderBy(desc(rank))
     .limit(5);
+  await recordAgentStage(
+    "retrieval_completed",
+    `Keyword retrieval returned ${local.length} course passage${local.length === 1 ? "" : "s"} for question ${question.position + 1}.`,
+    { sourceCount: local.length, retrieval: "keyword" },
+  );
   const values: Array<typeof researchFindings.$inferInsert> = local.map(
     (source) => ({
       assignmentId,
@@ -870,6 +933,11 @@ async function processResearchQuestion(
         question.prompt,
         env.AI_REQUEST_TIMEOUT_MS,
         env.CROSSREF_CONTACT_EMAIL,
+      );
+      await recordAgentStage(
+        "external_completed",
+        `Crossref returned ${external.length} scholarly record${external.length === 1 ? "" : "s"} for question ${question.position + 1}.`,
+        { sourceCount: external.length },
       );
       external.forEach((source, index) =>
         values.push({
@@ -1002,11 +1070,14 @@ async function processDraftQuestion(
   } | null = null;
   if (sources.length) {
     const drafted = await draftQuestionWithEvidence(
-      new OllamaProvider(
-        env.OLLAMA_BASE_URL,
-        env.AI_REQUEST_TIMEOUT_MS,
-        getOllamaAccessCredentials(),
-        getOllamaGenerationOptions(),
+      instrumentProvider(
+        new OllamaProvider(
+          env.OLLAMA_BASE_URL,
+          env.AI_REQUEST_TIMEOUT_MS,
+          getOllamaAccessCredentials(),
+          getOllamaGenerationOptions(),
+        ),
+        { timeoutMs: env.AI_REQUEST_TIMEOUT_MS },
       ),
       env.AI_MODEL_WRITER,
       {
@@ -1100,6 +1171,15 @@ async function processDraftQuestion(
     `Agent B drafted question ${question.position + 1} with ${answer.citations.length} traceable citation${answer.citations.length === 1 ? "" : "s"}.`,
     { questionId: question.id, confidenceScore: answer.confidenceScore },
   );
+}
+
+async function isRunCancelled(runId: string) {
+  const [run] = await getDatabase()
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  return run?.status === "cancelled";
 }
 
 async function remainingJobs(runId: string, excludingJobId?: string) {
@@ -1512,6 +1592,19 @@ async function failInvalidJob(
     userId: ownerId,
     ...errorFingerprint(error),
   });
+}
+
+function stagePrefix(jobType: string): AgentStagePrefix {
+  if (jobType === RESEARCH_JOB_TYPE) return "research";
+  if (jobType === DRAFT_JOB_TYPE) return "draft";
+  if (jobType === REVIEW_JOB_TYPE) return "review";
+  return "revision";
+}
+
+function agentLabelFor(prefix: AgentStagePrefix) {
+  if (prefix === "research") return "Agent C";
+  if (prefix === "review") return "Agent A";
+  return "Agent B";
 }
 
 function parsePayload(payload: Record<string, unknown>): AgentJobPayload {

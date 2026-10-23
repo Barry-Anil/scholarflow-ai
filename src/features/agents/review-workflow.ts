@@ -27,6 +27,7 @@ import {
   getOllamaGenerationOptions,
 } from "@/lib/env/server";
 import { AppError } from "@/lib/errors";
+import { instrumentProvider } from "./agent-telemetry";
 import { REVIEW_JOB_TYPE } from "./contracts";
 import { reviewQuestionIndependently } from "./reviewer";
 
@@ -303,11 +304,14 @@ export async function processReviewQuestionJob(
     throw new AppError("INVALID_INPUT", "The review context is incomplete.");
   }
   const result = await reviewQuestionIndependently(
-    new OllamaProvider(
-      env.OLLAMA_BASE_URL,
-      env.AI_REQUEST_TIMEOUT_MS,
-      getOllamaAccessCredentials(),
-      getOllamaGenerationOptions(),
+    instrumentProvider(
+      new OllamaProvider(
+        env.OLLAMA_BASE_URL,
+        env.AI_REQUEST_TIMEOUT_MS,
+        getOllamaAccessCredentials(),
+        getOllamaGenerationOptions(),
+      ),
+      { timeoutMs: env.AI_REQUEST_TIMEOUT_MS },
     ),
     env.AI_MODEL_REVIEWER,
     {

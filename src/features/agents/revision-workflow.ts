@@ -28,6 +28,7 @@ import {
   getOllamaGenerationOptions,
 } from "@/lib/env/server";
 import { AppError } from "@/lib/errors";
+import { instrumentProvider } from "./agent-telemetry";
 import { acceptedFindingIdsForRevision, REVISION_JOB_TYPE } from "./contracts";
 import { reviseQuestionFromFindings } from "./reviser";
 
@@ -391,11 +392,14 @@ export async function processRevisionQuestionJob(
     return;
   }
   const revised = await reviseQuestionFromFindings(
-    new OllamaProvider(
-      env.OLLAMA_BASE_URL,
-      env.AI_REQUEST_TIMEOUT_MS,
-      getOllamaAccessCredentials(),
-      getOllamaGenerationOptions(),
+    instrumentProvider(
+      new OllamaProvider(
+        env.OLLAMA_BASE_URL,
+        env.AI_REQUEST_TIMEOUT_MS,
+        getOllamaAccessCredentials(),
+        getOllamaGenerationOptions(),
+      ),
+      { timeoutMs: env.AI_REQUEST_TIMEOUT_MS },
     ),
     env.AI_MODEL_WRITER,
     {

@@ -49,6 +49,7 @@ import {
   formatReference,
 } from "@/features/exports/citation-format";
 import { ExportJobMonitor } from "@/features/exports/export-job-monitor";
+import { AgentMonitor } from "@/features/monitoring/agent-monitor";
 import { getAiEnv } from "@/lib/env/server";
 
 type PageProps = {
@@ -136,6 +137,7 @@ async function WorkspaceContent({ params, searchParams }: PageProps) {
   return (
     <main className="p-5 lg:p-8">
       <div className="mx-auto max-w-7xl space-y-6">
+        <AgentMonitor courseId={courseId} assignmentId={assignmentId} />
         {showSaved && (
           <div
             role="status"
@@ -286,7 +288,8 @@ async function WorkspaceContent({ params, searchParams }: PageProps) {
             />
           </div>
 
-          <aside className="space-y-6 xl:sticky xl:top-6">
+          {/* top-16 keeps the sticky agent monitor button clear of this column. */}
+          <aside className="space-y-6 xl:sticky xl:top-16">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -676,6 +679,7 @@ function formatTimestamp(value: Date) {
 function reviewStatusLabel(status: string) {
   if (status === "quality_gates_passed") return "Defined quality gates passed";
   if (status === "in_progress") return "Review in progress";
+  if (status === "cancelled") return "Review stopped";
   return "Changes required";
 }
 

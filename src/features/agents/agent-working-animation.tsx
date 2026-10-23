@@ -23,7 +23,9 @@ export function AgentWorkingAnimation({ className }: { className?: string }) {
   }, []);
 
   if (motionAllowed === null) {
-    return <div aria-hidden="true" className={cn("size-36 max-w-full", className)} />;
+    return (
+      <div aria-hidden="true" className={cn("size-36 max-w-full", className)} />
+    );
   }
 
   return (

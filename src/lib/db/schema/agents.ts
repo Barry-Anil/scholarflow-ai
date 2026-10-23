@@ -65,3 +65,23 @@ export const agentRunEvents = pgTable(
     index("agent_run_events_run_idx").on(table.runId, table.createdAt),
   ],
 );
+
+// One row per worker process. The worker id embeds the host name, so it is
+// never returned to browsers; monitoring only exposes timestamps and status.
+export const agentWorkerHeartbeats = pgTable(
+  "agent_worker_heartbeats",
+  {
+    workerId: varchar("worker_id", { length: 160 }).primaryKey(),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    currentJobId: uuid("current_job_id"),
+    stoppedAt: timestamp("stopped_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("agent_worker_heartbeats_last_idx").on(table.lastHeartbeatAt),
+  ],
+);

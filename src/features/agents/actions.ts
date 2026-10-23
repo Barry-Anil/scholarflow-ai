@@ -23,6 +23,7 @@ import {
   enqueueResearchAgent,
   enqueueStudentAgent,
 } from "./persistent-workflow";
+import { retryAgentRun, stopAgentRun } from "./run-control";
 
 const idsSchema = z.object({ courseId: z.uuid(), assignmentId: z.uuid() });
 const findingDecisionSchema = z.object({
@@ -248,4 +249,53 @@ export async function startStudentAgentAction(
   redirect(
     `${workspacePath}?agent=draft&status=${status}&message=${encodeURIComponent(message)}`,
   );
+}
+
+const runControlSchema = idsSchema.extend({ runId: z.uuid() });
+
+export type RunControlResult = { ok: boolean; message: string };
+
+export async function stopAgentRunAction(
+  courseId: string,
+  assignmentId: string,
+  runId: string,
+): Promise<RunControlResult> {
+  const user = await requireUser();
+  const parsed = runControlSchema.safeParse({ courseId, assignmentId, runId });
+  if (!parsed.success) return { ok: false, message: "The run is invalid." };
+  try {
+    const result = await stopAgentRun(assignmentId, user.id, runId);
+    revalidatePath(
+      `/dashboard/courses/${courseId}/assignments/${assignmentId}`,
+    );
+    return {
+      ok: true,
+      message: `Run stopped. ${result.cancelledTasks} unfinished task${result.cancelledTasks === 1 ? " was" : "s were"} cancelled; saved tasks are kept.`,
+    };
+  } catch (error) {
+    return { ok: false, message: safeErrorMessage(error) };
+  }
+}
+
+export async function retryAgentRunAction(
+  courseId: string,
+  assignmentId: string,
+  runId: string,
+): Promise<RunControlResult> {
+  const user = await requireUser();
+  const parsed = runControlSchema.safeParse({ courseId, assignmentId, runId });
+  if (!parsed.success) return { ok: false, message: "The run is invalid." };
+  try {
+    await enforceUserRateLimit(user.id, "agent.enqueue");
+    const result = await retryAgentRun(assignmentId, user.id, runId);
+    revalidatePath(
+      `/dashboard/courses/${courseId}/assignments/${assignmentId}`,
+    );
+    return {
+      ok: true,
+      message: `Retry queued for ${result.requeuedTasks} unfinished task${result.requeuedTasks === 1 ? "" : "s"}. Saved tasks are kept.`,
+    };
+  } catch (error) {
+    return { ok: false, message: safeErrorMessage(error) };
+  }
 }

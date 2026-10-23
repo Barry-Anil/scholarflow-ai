@@ -94,6 +94,31 @@ Worker lease variables are not required in Vercel. Vercel no longer executes que
 8. Run a successful Agent A review and verify all question events exist before the report and run become completed.
 9. Verify another user cannot read the job status endpoint.
 
+## Monitoring drawer
+
+Apply `drizzle/0008_agent_worker_heartbeats.sql` and re-run
+`deploy/postgres/agent-worker-role.sql` so the worker role can write
+`agent_worker_heartbeats`. Without that grant the worker keeps processing jobs,
+but the drawer reports the worker as "Never reported".
+
+The worker records stage events (`*.question_started`,
+`*.model_request_started`, `*.model_response_received`,
+`*.model_request_failed`, `*.retry_scheduled`, `research.retrieval_completed`)
+in `agent_run_events`. Event writes are best-effort and never fail a job. Jobs
+processed before this change show "no stage reported yet".
+
+The assignment workspace polls three read-only endpoints, each checking course
+read access: `/api/assignments/:id/monitor`, `/monitor/events`, and
+`/provenance`. The Ollama tags probe runs from the web server, is cached per
+server instance for `AGENT_MONITOR_HEALTH_TTL_MS`, and only proves the server is
+reachable and the models are installed; generation outcomes come from recorded
+events and usage records.
+
+To verify: start a run, open the monitor, and confirm that the stage changes to
+"Waiting for the model" while Ollama works. Stop the worker and confirm that the
+heartbeat turns stale and running tasks show as potentially stalled once the
+lease expires, not as failed.
+
 ## Rollback
 
 1. Stop and disable the worker: `sudo systemctl disable --now scholarflow-agent-worker`.
