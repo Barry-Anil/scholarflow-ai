@@ -324,3 +324,22 @@ Last updated: 2026-10-20
 | Accent usage     | Teal identifies agents/links; sky active; emerald completed; rose failed/cancelled     |
 
 **Pattern notes:** This tracker adapts Kokonut UI's transfer progress rail without carrying financial language into the agent domain. Always show Agent A, B, and C in that order, backed by the latest persisted run for reviewer, student, and researcher roles. Stage completion must reflect database state rather than simulated progress. Poll every five seconds only while a run is queued or running, then stop automatically. Keep the detailed history below the cards, preserve assignment links, and never expose run input/output content in the summary cards or polling response.
+
+### Study Tutor workspace
+
+Files: `src/features/study-tutor/study-tutor-home.tsx`, `src/features/study-tutor/study-workspace.tsx`
+Last updated: 2026-10-23
+
+| Property         | Class                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| Background       | `bg-canvas` page; `bg-white` panels; `bg-slate-50/70` source, upload, and lesson subpanels     |
+| Border           | `border border-slate-200`; upload and empty states use `border-dashed border-slate-300`        |
+| Border radius    | `rounded-2xl` primary panels; `rounded-xl` controls, section rows, messages, and nested panels |
+| Text — primary   | `text-slate-950 font-semibold`; document content uses `text-slate-700 text-sm leading-7`       |
+| Text — secondary | `text-slate-500 text-xs`; provenance and support details use compact uppercase labels          |
+| Spacing          | page `p-4 lg:p-6`; panels `p-4` or `p-5`; lesson blocks `space-y-6`; compact controls `gap-2`  |
+| Hover state      | `hover:bg-slate-100`; linked cards and drop zones use `hover:border-teal-300`                  |
+| Shadow           | `shadow-sm` on primary panels only; none on nested learning content                            |
+| Accent usage     | Teal for active learning/completion; sky for examples; amber mixed support; rose failures      |
+
+**Pattern notes:** Desktop study workspaces use a section rail, a flexible lesson canvas, and a grounded chat rail; mobile replaces this with three explicit tabs rather than squeezing columns. Progress bars represent persisted explicit completions only. Generated content always sits beside expandable real source text and traceable page/slide labels. Chat support labels distinguish document-backed, mixed, and insufficient answers. Audio controls remain compact and always state whether speech stays in-browser or is generated on demand without storage.

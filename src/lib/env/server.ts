@@ -6,6 +6,11 @@ import { publicEnvSchema } from "@/lib/env";
 
 const databaseEnvSchema = z.object({ DATABASE_URL: z.string().min(1) });
 
+const supabaseAdminEnvSchema = z.object({
+  NEXT_PUBLIC_SUPABASE_URL: z.url(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
+});
+
 const serverEnvSchema = publicEnvSchema.extend({
   DATABASE_URL: databaseEnvSchema.shape.DATABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
@@ -20,6 +25,20 @@ const optionalSecret = z.preprocess(
   (value) => (value === "" ? undefined : value),
   z.string().min(1).optional(),
 );
+
+const ttsEnvSchema = z.object({
+  INWORLD_API_KEY: optionalSecret,
+  INWORLD_TTS_MODEL: z
+    .enum(["inworld-tts-2", "inworld-tts-2-flash"])
+    .default("inworld-tts-2"),
+  INWORLD_TTS_VOICE_ID: z.string().min(1).default("Ashley"),
+  INWORLD_TTS_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(5_000)
+    .max(60_000)
+    .default(30_000),
+});
 
 const cloudflareAccessEnvSchema = z
   .object({
@@ -114,6 +133,13 @@ export function getDatabaseEnv() {
   return databaseEnvSchema.parse({ DATABASE_URL: process.env.DATABASE_URL });
 }
 
+export function getSupabaseAdminEnv() {
+  return supabaseAdminEnvSchema.parse({
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+}
+
 export function getAiEnv(): AiEnv {
   getOllamaAccessCredentials();
   return aiEnvSchema.parse({
@@ -164,6 +190,15 @@ export function getOllamaAccessCredentials() {
 export function getOperationsEnv() {
   return operationsEnvSchema.safeParse({
     JOB_WORKER_SECRET: process.env.JOB_WORKER_SECRET,
+  });
+}
+
+export function getTtsEnv() {
+  return ttsEnvSchema.parse({
+    INWORLD_API_KEY: process.env.INWORLD_API_KEY,
+    INWORLD_TTS_MODEL: process.env.INWORLD_TTS_MODEL,
+    INWORLD_TTS_VOICE_ID: process.env.INWORLD_TTS_VOICE_ID,
+    INWORLD_TTS_TIMEOUT_MS: process.env.INWORLD_TTS_TIMEOUT_MS,
   });
 }
 
