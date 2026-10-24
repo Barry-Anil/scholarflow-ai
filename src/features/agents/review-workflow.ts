@@ -2,7 +2,14 @@ import "server-only";
 
 import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
-import { createGenerationProvider } from "@/lib/ai/provider";
+import {
+  getRunAiProvider,
+  resolveAiProvider,
+} from "@/features/settings/ai-provider";
+import {
+  createGenerationProvider,
+  generationModelFor,
+} from "@/lib/ai/provider";
 import { requireAssignmentAccess } from "@/lib/auth/course-access";
 import { getDatabase } from "@/lib/db";
 import {
@@ -107,6 +114,7 @@ export async function enqueueReviewAgent(
     );
   }
 
+  const aiProvider = await resolveAiProvider(ownerId);
   const result = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtext(${assignmentId}))`,
@@ -136,8 +144,8 @@ export async function enqueueReviewAgent(
         agent: "reviewer",
         status: "queued",
         workflowState: "REVIEWING",
-        provider: env.AI_PROVIDER,
-        model: env.AI_MODEL_REVIEWER,
+        provider: aiProvider,
+        model: generationModelFor(aiProvider, env.AI_MODEL_REVIEWER),
         inputSnapshot: {
           draftId: latestDraft.id,
           draftVersion: latestDraft.version,
@@ -300,9 +308,12 @@ export async function processReviewQuestionJob(
     throw new AppError("INVALID_INPUT", "The review context is incomplete.");
   }
   const result = await reviewQuestionIndependently(
-    instrumentProvider(createGenerationProvider(), {
-      timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
-    }),
+    instrumentProvider(
+      createGenerationProvider(await getRunAiProvider(payload.runId)),
+      {
+        timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+      },
+    ),
     env.AI_MODEL_REVIEWER,
     {
       question: question.prompt,

@@ -104,6 +104,7 @@ export function instrumentProvider(
           "model_response_received",
           `Received a schema-valid response from ${result.model} in ${formatSeconds(result.latencyMs)}.`,
           {
+            provider: result.provider,
             model: result.model,
             latencyMs: result.latencyMs,
             inputTokens: result.inputTokens,

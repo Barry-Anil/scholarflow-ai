@@ -1,8 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import { OpenAiCompatibleProvider } from "@/lib/ai/openai-compatible";
-import { withFallback } from "@/lib/ai/provider";
+import {
+  createGenerationProvider,
+  effectiveAiProvider,
+  withFallback,
+} from "@/lib/ai/provider";
+import { parseAiProviderChoice } from "@/lib/ai/provider-choice";
 import type { StructuredAiProvider } from "@/lib/ai/types";
 import { AppError } from "@/lib/errors";
 
@@ -145,5 +150,113 @@ describe("Ollama fallback", () => {
       ).generateObject({ ...request, signal: controller.signal }),
     ).rejects.toMatchObject({ code: "AI_UNAVAILABLE" });
     expect(fallback.generateObject).not.toHaveBeenCalled();
+  });
+});
+
+describe("User-selected generation provider", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+  });
+
+  function configureFreeLlm() {
+    vi.stubEnv("OLLAMA_URL", "http://ollama.example.test");
+    vi.stubEnv("AI_FALLBACK_BASE_URL", "https://router.example.test/v1");
+    vi.stubEnv("AI_FALLBACK_API_KEY", "secret-key");
+    vi.stubEnv("AI_FALLBACK_MODEL", "auto:study");
+  }
+
+  function ollamaStream(content: string) {
+    return new Response(
+      [
+        JSON.stringify({ message: { content }, done: false }),
+        JSON.stringify({ model: "qwen3:8b", done: true, done_reason: "stop" }),
+      ].join("\n"),
+    );
+  }
+
+  /** Routes fetches by host; returns the mock so calls can be asserted. */
+  function stubServices(handlers: {
+    ollama: () => Promise<Response>;
+    router: () => Promise<Response>;
+  }) {
+    const fetchMock = vi.fn<typeof fetch>((url) =>
+      new URL(String(url)).hostname === "ollama.example.test"
+        ? handlers.ollama()
+        : handlers.router(),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
+  }
+
+  function hosts(fetchMock: ReturnType<typeof stubServices>) {
+    return fetchMock.mock.calls.map(([url]) => new URL(String(url)).hostname);
+  }
+
+  it("sends FreeLLM users to the router with the FreeLLM model", async () => {
+    configureFreeLlm();
+    const fetchMock = stubServices({
+      ollama: () => Promise.resolve(ollamaStream('{"answer":"local"}')),
+      router: () => Promise.resolve(completion('{"answer":"cloud"}')),
+    });
+
+    const result =
+      await createGenerationProvider("freellm").generateObject(request);
+
+    expect(result.value).toEqual({ answer: "cloud" });
+    expect(hosts(fetchMock)).toEqual(["router.example.test"]);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]![1]?.body));
+    expect(body.model).toBe("auto:study");
+  });
+
+  it("falls back from FreeLLM to Ollama with the role model", async () => {
+    configureFreeLlm();
+    const fetchMock = stubServices({
+      ollama: () => Promise.resolve(ollamaStream('{"answer":"local"}')),
+      router: () => Promise.reject(new TypeError("fetch failed")),
+    });
+
+    const result =
+      await createGenerationProvider("freellm").generateObject(request);
+
+    expect(result.value).toEqual({ answer: "local" });
+    expect(hosts(fetchMock)).toEqual([
+      "router.example.test",
+      "ollama.example.test",
+    ]);
+    const body = JSON.parse(String(fetchMock.mock.calls[1]![1]?.body));
+    expect(body.model).toBe("qwen3:8b");
+  });
+
+  it("keeps Ollama users on Ollama while it is healthy", async () => {
+    configureFreeLlm();
+    const fetchMock = stubServices({
+      ollama: () => Promise.resolve(ollamaStream('{"answer":"local"}')),
+      router: () => Promise.resolve(completion('{"answer":"cloud"}')),
+    });
+
+    await expect(
+      createGenerationProvider("ollama").generateObject(request),
+    ).resolves.toMatchObject({ value: { answer: "local" } });
+    expect(hosts(fetchMock)).toEqual(["ollama.example.test"]);
+  });
+
+  it("uses Ollama when FreeLLM is chosen but not configured", async () => {
+    vi.stubEnv("OLLAMA_URL", "http://ollama.example.test");
+    vi.stubEnv("AI_FALLBACK_BASE_URL", "");
+    const fetchMock = stubServices({
+      ollama: () => Promise.resolve(ollamaStream('{"answer":"local"}')),
+      router: () => Promise.resolve(completion('{"answer":"cloud"}')),
+    });
+
+    expect(effectiveAiProvider("freellm")).toBe("ollama");
+    await createGenerationProvider("freellm").generateObject(request);
+    expect(hosts(fetchMock)).toEqual(["ollama.example.test"]);
+  });
+
+  it("treats missing or unknown stored choices as Ollama", () => {
+    expect(parseAiProviderChoice(undefined)).toBe("ollama");
+    expect(parseAiProviderChoice("gpt")).toBe("ollama");
+    expect(parseAiProviderChoice("freellm")).toBe("freellm");
   });
 });

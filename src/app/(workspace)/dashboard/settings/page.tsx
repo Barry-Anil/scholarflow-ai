@@ -17,6 +17,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { StatusPill, WorkspacePageHeader } from "@/components/workspace/hub-ui";
+import { AiProviderForm } from "@/features/settings/ai-provider-form";
 import { getSettingsHub } from "@/features/workspace/data";
 
 export default function SettingsHubPage() {
@@ -51,7 +52,7 @@ async function SettingsContent() {
       label: "AI provider",
       ready: Boolean(data.ai),
       description: data.ai
-        ? `${data.ai.AI_PROVIDER} � writer ${data.ai.AI_MODEL_WRITER} � researcher ${data.ai.AI_MODEL_RESEARCHER} � reviewer ${data.ai.AI_MODEL_REVIEWER}`
+        ? `Ollama${data.aiProvider.freeLlmAvailable ? " + FreeLLM" : ""} � writer ${data.ai.AI_MODEL_WRITER} � researcher ${data.ai.AI_MODEL_RESEARCHER} � reviewer ${data.ai.AI_MODEL_REVIEWER}`
         : "AI configuration contains an invalid value.",
       icon: Bot,
     },
@@ -85,6 +86,22 @@ async function SettingsContent() {
                 <p className="mt-1 text-sm text-slate-500">{data.user.email}</p>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>AI provider</CardTitle>
+            <CardDescription>
+              Choose which models power your research, drafting, review and
+              Study Tutor requests.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AiProviderForm
+              current={data.aiProvider.current}
+              freeLlmAvailable={data.aiProvider.freeLlmAvailable}
+            />
           </CardContent>
         </Card>
 

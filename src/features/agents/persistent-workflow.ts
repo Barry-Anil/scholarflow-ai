@@ -4,7 +4,14 @@ import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { countWords } from "@/features/assignments/parser";
-import { createGenerationProvider } from "@/lib/ai/provider";
+import {
+  getRunAiProvider,
+  resolveAiProvider,
+} from "@/features/settings/ai-provider";
+import {
+  createGenerationProvider,
+  generationModelFor,
+} from "@/lib/ai/provider";
 import { requireAssignmentAccess } from "@/lib/auth/course-access";
 import { getDatabase } from "@/lib/db";
 import {
@@ -301,6 +308,7 @@ export async function enqueueStudentAgent(
     );
   }
 
+  const aiProvider = await resolveAiProvider(ownerId);
   const result = await db.transaction(async (tx) => {
     await tx.execute(
       sql`select pg_advisory_xact_lock(hashtext(${assignmentId}))`,
@@ -337,8 +345,8 @@ export async function enqueueStudentAgent(
         agent: "student",
         status: "queued",
         workflowState: "DRAFTING",
-        provider: env.AI_PROVIDER,
-        model: env.AI_MODEL_WRITER,
+        provider: aiProvider,
+        model: generationModelFor(aiProvider, env.AI_MODEL_WRITER),
         inputSnapshot: {
           questionIds: questions.map((question) => question.id),
           researchRunId: researchRun.id,
@@ -1066,9 +1074,12 @@ async function processDraftQuestion(
   } | null = null;
   if (sources.length) {
     const drafted = await draftQuestionWithEvidence(
-      instrumentProvider(createGenerationProvider(), {
-        timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
-      }),
+      instrumentProvider(
+        createGenerationProvider(await getRunAiProvider(payload.runId)),
+        {
+          timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+        },
+      ),
       env.AI_MODEL_WRITER,
       {
         prompt: question.prompt,

@@ -12,6 +12,7 @@ export const RATE_LIMIT_POLICIES = {
   "auth.password-reset": { limit: 5, windowMs: 60 * 60_000 },
   "auth.password-update": { limit: 5, windowMs: 60 * 60_000 },
   "course.create": { limit: 20, windowMs: 60 * 60_000 },
+  "settings.update": { limit: 30, windowMs: 60 * 60_000 },
   "course.membership": { limit: 30, windowMs: 60 * 60_000 },
   "knowledge.upload": { limit: 10, windowMs: 60 * 60_000 },
   "knowledge.retry": { limit: 30, windowMs: 60 * 60_000 },

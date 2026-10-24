@@ -1,23 +1,25 @@
 import "server-only";
 
+import { resolveAiProvider } from "@/features/settings/ai-provider";
 import { createGenerationProvider } from "@/lib/ai/provider";
 import { getAiEnv } from "@/lib/env/server";
 import { chatAnswerSchema, lessonSchema, type LessonMode } from "./contracts";
 
-function provider() {
+async function provider(ownerId: string) {
   const env = getAiEnv();
   return {
-    client: createGenerationProvider(),
+    client: createGenerationProvider(await resolveAiProvider(ownerId)),
     model: env.AI_MODEL_WRITER,
   };
 }
 
 export async function generateStudyLesson(input: {
+  ownerId: string;
   mode: LessonMode;
   sectionTitle: string;
   sources: Array<{ id: string; content: string; pageStart: number | null }>;
 }) {
-  const ai = provider();
+  const ai = await provider(input.ownerId);
   const result = await ai.client.generateObject({
     model: ai.model,
     schema: lessonSchema,
@@ -63,6 +65,7 @@ export async function generateStudyLesson(input: {
 }
 
 export async function answerStudyQuestion(input: {
+  ownerId: string;
   question: string;
   history: Array<{ role: "user" | "assistant"; content: string }>;
   sources: Array<{
@@ -72,7 +75,7 @@ export async function answerStudyQuestion(input: {
     pageStart: number | null;
   }>;
 }) {
-  const ai = provider();
+  const ai = await provider(input.ownerId);
   const result = await ai.client.generateObject({
     model: ai.model,
     schema: chatAnswerSchema,

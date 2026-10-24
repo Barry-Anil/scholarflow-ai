@@ -74,6 +74,7 @@ export async function POST(request: Request) {
         content: message.content,
       }));
     const generated = await answerStudyQuestion({
+      ownerId: user.id,
       question: parsed.data.message,
       history,
       sources: retrieval.results,

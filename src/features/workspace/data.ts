@@ -3,6 +3,8 @@ import "server-only";
 import { and, count, countDistinct, desc, eq, inArray } from "drizzle-orm";
 import { cache } from "react";
 
+import { getAiProviderPreference } from "@/features/settings/ai-provider";
+import { isFreeLlmConfigured } from "@/lib/ai/provider";
 import { requireUser } from "@/lib/auth/session";
 import { getAccessibleCourseIds } from "@/lib/auth/course-access";
 import { getDatabase } from "@/lib/db";
@@ -197,9 +199,11 @@ export const getSettingsHub = cache(async () => {
   const configuration = getConfigurationStatus();
   const operations = getOperationsEnv();
   let ai: ReturnType<typeof getAiEnv> | null = null;
+  let freeLlmAvailable = false;
 
   try {
     ai = getAiEnv();
+    freeLlmAvailable = isFreeLlmConfigured();
   } catch (error) {
     logger.warn("workspace.ai_configuration_invalid", {
       userId: user.id,
@@ -215,5 +219,9 @@ export const getSettingsHub = cache(async () => {
     configuration,
     workerConfigured: operations.success,
     ai,
+    aiProvider: {
+      current: await getAiProviderPreference(user.id),
+      freeLlmAvailable,
+    },
   };
 });

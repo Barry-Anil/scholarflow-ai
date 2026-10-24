@@ -75,6 +75,7 @@ export async function POST(request: Request) {
         { status: 422 },
       );
     const generated = await generateStudyLesson({
+      ownerId: user.id,
       mode: parsed.data.mode,
       sectionTitle: section.title,
       sources,
