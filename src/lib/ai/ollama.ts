@@ -12,6 +12,7 @@ import {
   ollamaFetchError,
   ollamaHttpError,
   ollamaInvalidResponse,
+  ollamaStreamError,
   type OllamaRequestContext,
 } from "./ollama-errors";
 import type {
@@ -19,12 +20,44 @@ import type {
   StructuredGenerationRequest,
 } from "./types";
 
-const ollamaResponseSchema = z.object({
-  model: z.string(),
-  message: z.object({ content: z.string() }),
+// One line of Ollama's NDJSON stream. Intermediate lines carry a content delta;
+// the final line has `done: true` plus token counts; failures arrive as `error`.
+const ollamaChunkSchema = z.object({
+  model: z.string().optional(),
+  message: z.object({ content: z.string() }).optional(),
+  done: z.boolean().optional(),
+  done_reason: z.string().optional(),
   prompt_eval_count: z.number().int().optional(),
   eval_count: z.number().int().optional(),
+  error: z.string().optional(),
 });
+
+type OllamaChunk = z.infer<typeof ollamaChunkSchema>;
+
+async function* readLines(body: ReadableStream<Uint8Array>) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let newline = buffer.indexOf("\n");
+      while (newline !== -1) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        if (line) yield line;
+        newline = buffer.indexOf("\n");
+      }
+    }
+    const rest = (buffer + decoder.decode()).trim();
+    if (rest) yield rest;
+  } finally {
+    // Releases the connection if the consumer stops early or an error is thrown.
+    await reader.cancel().catch(() => undefined);
+  }
+}
 
 export class OllamaProvider implements StructuredAiProvider {
   readonly #baseUrl: URL;
@@ -64,6 +97,11 @@ export class OllamaProvider implements StructuredAiProvider {
       timeoutMs: this.#timeoutMs,
       startedAt,
     };
+    // One deadline covers connecting, model loading and reading the whole stream.
+    const timeout = AbortSignal.timeout(this.#timeoutMs);
+    const signal = request.signal
+      ? AbortSignal.any([timeout, request.signal])
+      : timeout;
     let response: Response;
     try {
       response = await fetch(new URL("/api/chat", this.#baseUrl), {
@@ -72,7 +110,9 @@ export class OllamaProvider implements StructuredAiProvider {
         body: JSON.stringify({
           model: request.model,
           messages: request.messages,
-          stream: false,
+          // Streaming keeps bytes flowing so proxies (Cloudflare: ~100s idle)
+          // do not cut long generations.
+          stream: true,
           format: z.toJSONSchema(request.schema),
           think: false,
           options: {
@@ -92,38 +132,28 @@ export class OllamaProvider implements StructuredAiProvider {
           },
         }),
         cache: "no-store",
-        signal: AbortSignal.timeout(this.#timeoutMs),
+        signal,
       });
     } catch (error) {
       throw ollamaFetchError(error, context);
     }
     if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
       throw ollamaHttpError(response, context);
     }
 
-    let responseBody: unknown;
-    try {
-      responseBody = await response.json();
-    } catch (error) {
+    const { content, final } = await this.#readStream(response, context);
+    if (final.done_reason === "length") {
       throw ollamaInvalidResponse(
         context,
-        "invalid_json",
-        error,
-        response.status,
-      );
-    }
-    const payload = ollamaResponseSchema.safeParse(responseBody);
-    if (!payload.success) {
-      throw ollamaInvalidResponse(
-        context,
-        "invalid_payload",
+        "truncated_output",
         undefined,
         response.status,
       );
     }
     let parsedJson: unknown;
     try {
-      parsedJson = JSON.parse(payload.data.message.content);
+      parsedJson = JSON.parse(content);
     } catch (error) {
       throw ollamaInvalidResponse(
         context,
@@ -145,11 +175,70 @@ export class OllamaProvider implements StructuredAiProvider {
     return {
       value: value.data,
       provider: "ollama",
-      model: payload.data.model,
-      inputTokens: payload.data.prompt_eval_count ?? null,
-      outputTokens: payload.data.eval_count ?? null,
+      model: final.model ?? request.model,
+      inputTokens: final.prompt_eval_count ?? null,
+      outputTokens: final.eval_count ?? null,
       latencyMs: Math.round(performance.now() - startedAt),
     };
+  }
+
+  async #readStream(response: Response, context: OllamaRequestContext) {
+    if (!response.body) {
+      throw ollamaInvalidResponse(
+        context,
+        "invalid_payload",
+        undefined,
+        response.status,
+      );
+    }
+    const parts: string[] = [];
+    let final: OllamaChunk | undefined;
+    try {
+      for await (const line of readLines(response.body)) {
+        let json: unknown;
+        try {
+          json = JSON.parse(line);
+        } catch (error) {
+          throw ollamaInvalidResponse(
+            context,
+            "invalid_json",
+            error,
+            response.status,
+          );
+        }
+        const chunk = ollamaChunkSchema.safeParse(json);
+        if (!chunk.success) {
+          throw ollamaInvalidResponse(
+            context,
+            "invalid_payload",
+            undefined,
+            response.status,
+          );
+        }
+        if (chunk.data.error) {
+          throw ollamaStreamError(context, chunk.data.error);
+        }
+        if (chunk.data.message) parts.push(chunk.data.message.content);
+        if (chunk.data.done) {
+          final = chunk.data;
+          break;
+        }
+      }
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      // Timeouts, caller aborts and dropped connections while reading the body.
+      throw ollamaFetchError(error, context);
+    }
+    if (!final) {
+      // The stream closed without a terminal chunk: the connection was cut.
+      throw ollamaInvalidResponse(
+        context,
+        "invalid_payload",
+        undefined,
+        response.status,
+      );
+    }
+    return { content: parts.join(""), final };
   }
 }
 

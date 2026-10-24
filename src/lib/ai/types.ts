@@ -10,6 +10,8 @@ export type StructuredGenerationRequest<T> = {
   messages: AiMessage[];
   schema: z.ZodType<T>;
   temperature?: number;
+  /** Aborts the request early, e.g. when the client disconnects. */
+  signal?: AbortSignal;
 };
 
 export type StructuredGenerationResult<T> = {

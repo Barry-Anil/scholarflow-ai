@@ -175,7 +175,7 @@ For the local baseline:
 
 4. Keep `AI_EMBEDDING_DIMENSIONS=768` for the database vector schema. Existing chunks can be embedded from the course knowledge page in resumable batches of 32.
 
-5. Optionally set `AI_REQUEST_TIMEOUT_MS`, `DAILY_AI_REQUEST_LIMIT`, and `MAX_AGENT_ITERATIONS`. Defaults are 90 seconds per model request, 100 agent runs per rolling 24 hours, and five revision cycles per assignment.
+5. Optionally set `AI_REQUEST_TIMEOUT_MS`, `DAILY_AI_REQUEST_LIMIT`, and `MAX_AGENT_ITERATIONS`. Defaults are 120 seconds per model request (a total deadline covering model load and the full streamed response; raise it to e.g. `600000` for slow or cold models), 100 agent runs per rolling 24 hours, and five revision cycles per assignment.
 
 Crossref's public REST API is the optional external-research adapter, so it does not require an API key. Set `CROSSREF_CONTACT_EMAIL` to identify requests to Crossref's polite pool. External research remains disabled when the assignment policy disallows it. AI credentials stay server-only, and paid AI use defaults to disabled.
 

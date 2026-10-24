@@ -343,3 +343,22 @@ Last updated: 2026-10-24
 | Accent usage     | Teal completion; sky active processing; amber deferred/retry states; rose failures             |
 
 **Pattern notes:** Desktop study workspaces use a section rail, a flexible lesson canvas, and a grounded chat rail; mobile replaces this with three explicit tabs rather than squeezing columns. Progress bars and document-processing steps represent persisted explicit completions only—never simulated percentages. Processing details stay expandable after completion, expose real section/chunk/embedding counts, and describe keyword fallback when semantic embeddings are deferred. Long session titles use a two-line clamp with `overflow-wrap:anywhere`; filenames truncate while retaining the full value in a title attribute. Generated content always sits beside expandable real source text and traceable page/slide labels. Chat support labels distinguish document-backed, mixed, and insufficient answers. Audio controls remain compact and always state whether speech stays in-browser or is generated on demand without storage.
+
+### Confirmation dialog
+
+File: `src/components/ui/confirmation-dialog.tsx`
+Last updated: 2026-10-24
+
+| Property         | Class                                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| Background       | `bg-white` panel; `bg-slate-950/45 backdrop-blur-xs` overlay; `bg-rose-50` destructive icon   |
+| Border           | `border border-slate-200`; errors use `border-rose-200`                                       |
+| Border radius    | `rounded-2xl` panel; `rounded-xl` icon and error state                                        |
+| Text — primary   | `text-slate-950 text-lg font-semibold tracking-tight`                                         |
+| Text — secondary | `text-slate-500 text-sm leading-6`; destructive/error accents use `text-rose-600/700`         |
+| Spacing          | panel `p-6`; content `gap-4`; actions `mt-6 gap-3`                                            |
+| Hover state      | secondary Button pattern; destructive action uses `hover:bg-rose-700`                         |
+| Shadow           | `shadow-2xl`                                                                                  |
+| Accent usage     | Rose is reserved for destructive confirmation and request errors; Cancel receives focus first |
+
+**Pattern notes:** Destructive confirmations use a centered modal over a dark translucent backdrop. Name the affected record, state that deletion is permanent, focus the safe action first, trap and restore focus, support Escape/backdrop dismissal, and prevent dismissal while the destructive request is pending.

@@ -157,7 +157,11 @@ export function logOllamaCompleted(
 
 export function ollamaInvalidResponse(
   context: OllamaRequestContext,
-  reason: "invalid_json" | "invalid_payload" | "invalid_structured_output",
+  reason:
+    | "invalid_json"
+    | "invalid_payload"
+    | "invalid_structured_output"
+    | "truncated_output",
   cause?: unknown,
   httpStatus?: number,
 ) {
@@ -175,8 +179,31 @@ export function ollamaInvalidResponse(
     "AI_RESPONSE_INVALID",
     reason === "invalid_structured_output"
       ? "Ollama returned structured output that did not match the required format. Retry the request."
-      : "Ollama returned an invalid API response.",
+      : reason === "truncated_output"
+        ? "Ollama stopped before completing the response because the output token limit was reached. Increase AI_NUM_PREDICT or shorten the request."
+        : "Ollama returned an invalid API response.",
     { cause },
+  );
+}
+
+/** Ollama reports failures after headers are sent as an `error` line in the stream. */
+export function ollamaStreamError(
+  context: OllamaRequestContext,
+  errorMessage: string,
+) {
+  logger.error("ai.ollama.stream_failed", {
+    operation: context.operation,
+    hostname: context.hostname,
+    model: context.model,
+    timeoutMs: context.timeoutMs,
+    durationMs: durationMs(context.startedAt),
+    failureType: "stream_error",
+    errorMessage,
+  });
+  return new AppError(
+    "AI_UNAVAILABLE",
+    "Ollama failed while generating the response. Retry shortly or check the Ollama server logs.",
+    { status: 503 },
   );
 }
 

@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { Card } from "@/components/ui/card";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   createStudyDocumentProgress,
   type StudyDocumentProgress,
@@ -44,6 +45,11 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
     percent: 0,
   });
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [pendingDeletion, setPendingDeletion] = useState<{
+    id: string;
+    title: string;
+  } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => () => void (pollRun.current += 1), []);
 
@@ -154,14 +160,40 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
     xhr.send(data);
   }
 
-  async function deleteSession(id: string, title: string) {
-    if (!window.confirm(`Delete “${title}” and its uploaded notes?`)) return;
-    setDeleting(id);
-    const response = await fetch(`/api/study-tutor/sessions/${id}`, {
-      method: "DELETE",
-    });
-    setDeleting(null);
-    if (response.ok) router.refresh();
+  function requestSessionDeletion(id: string, title: string) {
+    setDeleteError(null);
+    setPendingDeletion({ id, title });
+  }
+
+  async function confirmSessionDeletion() {
+    if (!pendingDeletion) return;
+
+    setDeleting(pendingDeletion.id);
+    setDeleteError(null);
+    try {
+      const response = await fetch(
+        `/api/study-tutor/sessions/${pendingDeletion.id}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          payload?.error ?? "The study session could not be deleted.",
+        );
+      }
+      setPendingDeletion(null);
+      router.refresh();
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error
+          ? error.message
+          : "The study session could not be deleted.",
+      );
+    } finally {
+      setDeleting(null);
+    }
   }
 
   return (
@@ -288,7 +320,9 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
                       aria-label={`Delete ${session.title}`}
                       className="rounded-lg p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/30"
                       disabled={deleting === session.id}
-                      onClick={() => deleteSession(session.id, session.title)}
+                      onClick={() =>
+                        requestSessionDeletion(session.id, session.title)
+                      }
                     >
                       {deleting === session.id ? (
                         <LoaderCircle className="size-4 animate-spin" />
@@ -351,6 +385,24 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
           )}
         </section>
       </div>
+
+      <ConfirmationDialog
+        isOpen={pendingDeletion !== null}
+        title="Delete study session?"
+        description={
+          pendingDeletion
+            ? `“${pendingDeletion.title}” and its uploaded notes will be permanently deleted. This action cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete session"
+        isPending={deleting !== null}
+        error={deleteError}
+        onCancel={() => {
+          setPendingDeletion(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => void confirmSessionDeletion()}
+      />
     </main>
   );
 }
