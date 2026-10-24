@@ -56,6 +56,47 @@ describe("Study Tutor ingestion", () => {
     ]);
     expect(sections.every((section) => section.pageStart === 7)).toBe(true);
   });
+
+  it("divides a study guide by chapter across pages, without headers or contents entries", () => {
+    const header = "Course Guide | Weeks 1-11";
+    const body = (topic: string) =>
+      `1. Core concept\n${topic} is explained here with enough supporting detail to count as real content.\n2. Key principles\nPrinciples of ${topic}.`;
+    const sections = detectStudySections(
+      [
+        {
+          pageNumber: 1,
+          text: `${header} 1\nContents and study method\n1 | Images\n2 | Sequence models\nHow to use this guide.`,
+        },
+        {
+          pageNumber: 2,
+          text: `${header} 2\n1 | Images\n${body("Images")}`,
+        },
+        {
+          pageNumber: 3,
+          text: `${header} 3\n6. Important comparisons\nGreyscale versus RGB.\n2 | Sequence models and recurrent\nnetworks\n${body("Recurrence")}`,
+        },
+        {
+          pageNumber: 4,
+          text: `${header} 4\nMaster Cheat Sheet\nFormula one\nFormula two`,
+        },
+      ],
+      "Guide",
+    );
+    expect(sections.map((section) => section.title)).toEqual([
+      "Contents and study method",
+      "1. Images",
+      "2. Sequence models and recurrent networks",
+      "Master Cheat Sheet",
+    ]);
+    const [, images, sequence, cheatSheet] = sections;
+    expect(images).toMatchObject({ pageStart: 2, pageEnd: 3 });
+    expect(images?.content).toContain("Greyscale versus RGB.");
+    expect(sequence?.content).toMatch(/^1\. Core concept/);
+    expect(cheatSheet?.content).toBe("Formula one\nFormula two");
+    expect(sections.some((section) => section.content.includes(header))).toBe(
+      false,
+    );
+  });
 });
 
 describe("Inworld TTS", () => {

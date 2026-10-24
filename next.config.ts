@@ -41,6 +41,8 @@ const nextConfig: NextConfig = {
           `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${process.env.NODE_ENV === "production" ? "" : " 'unsafe-eval'"}`,
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: blob:",
+          // Study Tutor plays server-generated speech from a blob: URL.
+          "media-src 'self' blob:",
           "font-src 'self' data:",
           "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
         ].join("; "),
