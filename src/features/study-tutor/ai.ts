@@ -1,22 +1,13 @@
 import "server-only";
 
-import { OllamaProvider } from "@/lib/ai/ollama";
-import {
-  getAiEnv,
-  getOllamaAccessCredentials,
-  getOllamaGenerationOptions,
-} from "@/lib/env/server";
+import { createGenerationProvider } from "@/lib/ai/provider";
+import { getAiEnv } from "@/lib/env/server";
 import { chatAnswerSchema, lessonSchema, type LessonMode } from "./contracts";
 
 function provider() {
   const env = getAiEnv();
   return {
-    client: new OllamaProvider(
-      env.OLLAMA_BASE_URL,
-      env.AI_REQUEST_TIMEOUT_MS,
-      getOllamaAccessCredentials(),
-      getOllamaGenerationOptions(),
-    ),
+    client: createGenerationProvider(),
     model: env.AI_MODEL_WRITER,
   };
 }

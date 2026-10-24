@@ -3,7 +3,7 @@ import "server-only";
 import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
 import { countWords } from "@/features/assignments/parser";
-import { OllamaProvider } from "@/lib/ai/ollama";
+import { createGenerationProvider } from "@/lib/ai/provider";
 import { requireAssignmentAccess } from "@/lib/auth/course-access";
 import { getDatabase } from "@/lib/db";
 import {
@@ -22,11 +22,7 @@ import {
   rubricCriteria,
   usageRecords,
 } from "@/lib/db/schema";
-import {
-  getAiEnv,
-  getOllamaAccessCredentials,
-  getOllamaGenerationOptions,
-} from "@/lib/env/server";
+import { getAiEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors";
 import { instrumentProvider } from "./agent-telemetry";
 import { acceptedFindingIdsForRevision, REVISION_JOB_TYPE } from "./contracts";
@@ -392,15 +388,9 @@ export async function processRevisionQuestionJob(
     return;
   }
   const revised = await reviseQuestionFromFindings(
-    instrumentProvider(
-      new OllamaProvider(
-        env.OLLAMA_BASE_URL,
-        env.AI_REQUEST_TIMEOUT_MS,
-        getOllamaAccessCredentials(),
-        getOllamaGenerationOptions(),
-      ),
-      { timeoutMs: env.AI_REQUEST_TIMEOUT_MS },
-    ),
+    instrumentProvider(createGenerationProvider(), {
+      timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+    }),
     env.AI_MODEL_WRITER,
     {
       question: question.prompt,

@@ -164,6 +164,50 @@ export function getAiEnv(): AiEnv {
   });
 }
 
+// Optional OpenAI-compatible fallback (e.g. a FreeLLMAPI router), used only
+// when Ollama is unreachable or times out. Unset base URL disables it.
+const aiFallbackEnvSchema = z
+  .object({
+    AI_FALLBACK_BASE_URL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.url().optional(),
+    ),
+    AI_FALLBACK_API_KEY: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().min(1).optional(),
+    ),
+    AI_FALLBACK_MODEL: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.string().min(1).optional(),
+    ),
+    AI_FALLBACK_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .min(5_000)
+      .max(900_000)
+      .default(120_000),
+  })
+  .refine((value) => !value.AI_FALLBACK_BASE_URL || value.AI_FALLBACK_MODEL, {
+    message: "AI_FALLBACK_MODEL is required when AI_FALLBACK_BASE_URL is set.",
+    path: ["AI_FALLBACK_MODEL"],
+  });
+
+export function getAiFallbackEnv() {
+  const env = aiFallbackEnvSchema.parse({
+    AI_FALLBACK_BASE_URL: process.env.AI_FALLBACK_BASE_URL,
+    AI_FALLBACK_API_KEY: process.env.AI_FALLBACK_API_KEY,
+    AI_FALLBACK_MODEL: process.env.AI_FALLBACK_MODEL,
+    AI_FALLBACK_TIMEOUT_MS: process.env.AI_FALLBACK_TIMEOUT_MS,
+  });
+  if (!env.AI_FALLBACK_BASE_URL || !env.AI_FALLBACK_MODEL) return null;
+  return {
+    baseUrl: env.AI_FALLBACK_BASE_URL,
+    apiKey: env.AI_FALLBACK_API_KEY ?? null,
+    model: env.AI_FALLBACK_MODEL,
+    timeoutMs: env.AI_FALLBACK_TIMEOUT_MS,
+  };
+}
+
 export function getOllamaGenerationOptions() {
   const env = getAiEnv();
   return {

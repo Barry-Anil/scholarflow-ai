@@ -30,7 +30,11 @@ import {
   processingJobs,
   usageRecords,
 } from "@/lib/db/schema";
-import { getAiEnv, getOllamaAccessCredentials } from "@/lib/env/server";
+import {
+  getAiEnv,
+  getAiFallbackEnv,
+  getOllamaAccessCredentials,
+} from "@/lib/env/server";
 import { errorFingerprint } from "@/lib/errors";
 import { logger } from "@/lib/logging/logger";
 import {
@@ -432,7 +436,9 @@ export async function getAssignmentMonitor(
     config: {
       models,
       requestTimeoutMs: env.AI_REQUEST_TIMEOUT_MS,
-      modelGraceMs: config.modelGraceMs,
+      // A request that falls back may legitimately also use the fallback's time.
+      modelGraceMs:
+        config.modelGraceMs + (getAiFallbackEnv()?.timeoutMs ?? 0),
       workerStaleMs: config.workerStaleMs,
       leaseMs: config.leaseMs,
       heartbeatMs: config.heartbeatMs,

@@ -2,7 +2,7 @@ import "server-only";
 
 import { and, count, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 
-import { OllamaProvider } from "@/lib/ai/ollama";
+import { createGenerationProvider } from "@/lib/ai/provider";
 import { requireAssignmentAccess } from "@/lib/auth/course-access";
 import { getDatabase } from "@/lib/db";
 import {
@@ -21,11 +21,7 @@ import {
   rubricCriteria,
   usageRecords,
 } from "@/lib/db/schema";
-import {
-  getAiEnv,
-  getOllamaAccessCredentials,
-  getOllamaGenerationOptions,
-} from "@/lib/env/server";
+import { getAiEnv } from "@/lib/env/server";
 import { AppError } from "@/lib/errors";
 import { instrumentProvider } from "./agent-telemetry";
 import { REVIEW_JOB_TYPE } from "./contracts";
@@ -304,15 +300,9 @@ export async function processReviewQuestionJob(
     throw new AppError("INVALID_INPUT", "The review context is incomplete.");
   }
   const result = await reviewQuestionIndependently(
-    instrumentProvider(
-      new OllamaProvider(
-        env.OLLAMA_BASE_URL,
-        env.AI_REQUEST_TIMEOUT_MS,
-        getOllamaAccessCredentials(),
-        getOllamaGenerationOptions(),
-      ),
-      { timeoutMs: env.AI_REQUEST_TIMEOUT_MS },
-    ),
+    instrumentProvider(createGenerationProvider(), {
+      timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+    }),
     env.AI_MODEL_REVIEWER,
     {
       question: question.prompt,

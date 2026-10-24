@@ -4,7 +4,7 @@ import { and, count, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { countWords } from "@/features/assignments/parser";
-import { OllamaProvider } from "@/lib/ai/ollama";
+import { createGenerationProvider } from "@/lib/ai/provider";
 import { requireAssignmentAccess } from "@/lib/auth/course-access";
 import { getDatabase } from "@/lib/db";
 import {
@@ -24,11 +24,7 @@ import {
   rubricCriteria,
   usageRecords,
 } from "@/lib/db/schema";
-import {
-  getAiEnv,
-  getOllamaAccessCredentials,
-  getOllamaGenerationOptions,
-} from "@/lib/env/server";
+import { getAiEnv } from "@/lib/env/server";
 import { AppError, errorFingerprint } from "@/lib/errors";
 import { logger } from "@/lib/logging/logger";
 import { searchCrossref } from "@/lib/research/crossref";
@@ -1070,15 +1066,9 @@ async function processDraftQuestion(
   } | null = null;
   if (sources.length) {
     const drafted = await draftQuestionWithEvidence(
-      instrumentProvider(
-        new OllamaProvider(
-          env.OLLAMA_BASE_URL,
-          env.AI_REQUEST_TIMEOUT_MS,
-          getOllamaAccessCredentials(),
-          getOllamaGenerationOptions(),
-        ),
-        { timeoutMs: env.AI_REQUEST_TIMEOUT_MS },
-      ),
+      instrumentProvider(createGenerationProvider(), {
+        timeoutMs: env.AI_REQUEST_TIMEOUT_MS,
+      }),
       env.AI_MODEL_WRITER,
       {
         prompt: question.prompt,
