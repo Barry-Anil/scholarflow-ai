@@ -10,6 +10,7 @@ import { getDatabase } from "@/lib/db";
 import {
   studyChunks,
   studyDocuments,
+  processingJobDiagnostics,
   processingJobs,
   studySections,
   studySessions,
@@ -25,6 +26,12 @@ import {
 } from "./constants";
 import { extractStudyDocument } from "./extract";
 import { detectStudySections } from "./sections";
+import {
+  createStudyDocumentProgress,
+  readStudyDocumentProgress,
+  type StudyDocumentProgress,
+  type StudyProcessingStepId,
+} from "./processing-progress";
 
 type ProcessStudyDocumentInput = {
   sessionId: string;
@@ -42,6 +49,70 @@ const studyJobPayloadSchema = z.object({
   mimeType: z.enum(STUDY_MIME_TYPES),
   title: z.string().min(1).max(240),
 });
+
+function metadataWithProgress(
+  metadata: Record<string, unknown>,
+  processing: StudyDocumentProgress,
+) {
+  return { ...metadata, processing };
+}
+
+async function updateStoredProgress(
+  documentId: string,
+  ownerId: string,
+  stage: StudyDocumentProgress["stage"],
+  completedSteps: StudyProcessingStepId[] | undefined,
+  details: Omit<
+    Partial<StudyDocumentProgress>,
+    "stage" | "completedSteps" | "updatedAt"
+  > = {},
+) {
+  const db = getDatabase();
+  const [document] = await db
+    .select({
+      status: studyDocuments.status,
+      metadata: studyDocuments.extractionMetadata,
+    })
+    .from(studyDocuments)
+    .where(
+      and(
+        eq(studyDocuments.id, documentId),
+        eq(studyDocuments.ownerId, ownerId),
+      ),
+    )
+    .limit(1);
+  if (!document) return;
+  const current = readStudyDocumentProgress(document.metadata, document.status);
+  const metadata =
+    document.metadata && typeof document.metadata === "object"
+      ? document.metadata
+      : {};
+  await db
+    .update(studyDocuments)
+    .set({
+      extractionMetadata: metadataWithProgress(
+        metadata,
+        createStudyDocumentProgress(
+          stage,
+          completedSteps ?? current.completedSteps,
+          {
+            pageCount: current.pageCount,
+            sectionCount: current.sectionCount,
+            chunkCount: current.chunkCount,
+            embeddedChunkCount: current.embeddedChunkCount,
+            embeddingStatus: current.embeddingStatus,
+            ...details,
+          },
+        ),
+      ),
+    })
+    .where(
+      and(
+        eq(studyDocuments.id, documentId),
+        eq(studyDocuments.ownerId, ownerId),
+      ),
+    );
+}
 
 export async function processClaimedStudyDocumentJob(
   jobId: string,
@@ -100,6 +171,13 @@ export async function processClaimedStudyDocumentJob(
         .set({ status: "failed", lastActivityAt: new Date() })
         .where(eq(studySessions.id, payload.data.sessionId));
     });
+    await updateStoredProgress(
+      payload.data.documentId,
+      job.ownerId,
+      "failed",
+      undefined,
+      { message },
+    );
     return { status: "failed" as const };
   }
 
@@ -124,6 +202,12 @@ export async function processClaimedStudyDocumentJob(
   leaseTimer.unref();
 
   try {
+    await updateStoredProgress(
+      payload.data.documentId,
+      job.ownerId,
+      "downloading",
+      ["stored"],
+    );
     const { data, error } = await getSupabaseAdminClient()
       .storage.from(STUDY_STORAGE_BUCKET)
       .download(payload.data.storagePath);
@@ -134,13 +218,20 @@ export async function processClaimedStudyDocumentJob(
         { cause: error },
       );
     }
+    const bytes = await data.arrayBuffer();
+    await updateStoredProgress(
+      payload.data.documentId,
+      job.ownerId,
+      "extracting",
+      ["stored", "downloaded"],
+    );
     const result = await processStudyDocument({
       sessionId: payload.data.sessionId,
       documentId: payload.data.documentId,
       ownerId: job.ownerId,
       title: payload.data.title,
       mimeType: payload.data.mimeType,
-      bytes: await data.arrayBuffer(),
+      bytes,
     });
     await db
       .update(processingJobs)
@@ -165,6 +256,16 @@ export async function processClaimedStudyDocumentJob(
       job.attempts < job.maxAttempts &&
       !(error instanceof AppError && error.code === "INVALID_INPUT");
     const message = safeErrorMessage(error);
+    const errorCode =
+      error instanceof AppError ? error.code : "UNEXPECTED_ERROR";
+    // The user only sees a generic message, so keep the real cause for operators.
+    logger.error("study.document_job_failed", {
+      jobId: job.id,
+      attempt: job.attempts,
+      retryable,
+      ...errorFingerprint(error),
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     await db.transaction(async (tx) => {
       await tx
         .update(processingJobs)
@@ -173,25 +274,60 @@ export async function processClaimedStudyDocumentJob(
           availableAt: retryable
             ? new Date(Date.now() + Math.min(60_000, 2 ** job.attempts * 2_000))
             : new Date(),
+          completedAt: retryable ? null : new Date(),
           lockedAt: null,
           lockedBy: null,
           leaseExpiresAt: null,
-          lastErrorCode:
-            error instanceof AppError ? error.code : "UNEXPECTED_ERROR",
+          lastErrorCode: errorCode,
           lastError: message,
         })
         .where(eq(processingJobs.id, job.id));
-      if (retryable) {
-        await tx
-          .update(studyDocuments)
-          .set({ status: "queued", errorMessage: null })
-          .where(eq(studyDocuments.id, payload.data.documentId));
-        await tx
-          .update(studySessions)
-          .set({ status: "processing", lastActivityAt: new Date() })
-          .where(eq(studySessions.id, payload.data.sessionId));
-      }
+      await tx.insert(processingJobDiagnostics).values({
+        jobId: job.id,
+        attempt: job.attempts,
+        errorCode,
+        detail: JSON.stringify({
+          ...errorFingerprint(error),
+          recordedAt: new Date().toISOString(),
+        }),
+      });
+      // A final failure must reach the document and session, or the upload
+      // looks queued forever.
+      await tx
+        .update(studyDocuments)
+        .set(
+          retryable
+            ? { status: "queued", errorMessage: null }
+            : { status: "failed", errorMessage: message },
+        )
+        .where(eq(studyDocuments.id, payload.data.documentId));
+      await tx
+        .update(studySessions)
+        .set({
+          status: retryable ? "processing" : "failed",
+          lastActivityAt: new Date(),
+        })
+        .where(eq(studySessions.id, payload.data.sessionId));
     });
+    const existing = await db
+      .select({
+        status: studyDocuments.status,
+        metadata: studyDocuments.extractionMetadata,
+      })
+      .from(studyDocuments)
+      .where(eq(studyDocuments.id, payload.data.documentId))
+      .limit(1);
+    const progress = readStudyDocumentProgress(
+      existing[0]?.metadata,
+      existing[0]?.status ?? "processing",
+    );
+    await updateStoredProgress(
+      payload.data.documentId,
+      job.ownerId,
+      retryable ? "retrying" : "failed",
+      progress.completedSteps,
+      { message },
+    );
     return { status: retryable ? ("queued" as const) : ("failed" as const) };
   } finally {
     clearInterval(leaseTimer);
@@ -200,6 +336,11 @@ export async function processClaimedStudyDocumentJob(
 
 export async function processStudyDocument(input: ProcessStudyDocumentInput) {
   const db = getDatabase();
+  let sourceMetadata: Record<string, unknown> = {};
+  let progress = createStudyDocumentProgress("extracting", [
+    "stored",
+    "downloaded",
+  ]);
   await db
     .update(studyDocuments)
     .set({ status: "processing", errorMessage: null })
@@ -212,6 +353,18 @@ export async function processStudyDocument(input: ProcessStudyDocumentInput) {
   try {
     const extracted = await extractStudyDocument(input.bytes, input.mimeType);
     if (!extracted.text.trim()) throw new Error("No readable text was found.");
+    sourceMetadata = extracted.metadata;
+    progress = createStudyDocumentProgress(
+      "organizing",
+      ["stored", "downloaded", "extracted"],
+      { pageCount: extracted.pages.length },
+    );
+    await db
+      .update(studyDocuments)
+      .set({
+        extractionMetadata: metadataWithProgress(sourceMetadata, progress),
+      })
+      .where(eq(studyDocuments.id, input.documentId));
     const sections = detectStudySections(extracted.pages, input.title);
     if (!sections.length)
       throw new Error("No usable study sections were found.");
@@ -231,7 +384,32 @@ export async function processStudyDocument(input: ProcessStudyDocumentInput) {
         sectionId: section.id,
       })),
     );
+    progress = createStudyDocumentProgress(
+      "indexing",
+      ["stored", "downloaded", "extracted", "organized"],
+      {
+        pageCount: extracted.pages.length,
+        sectionCount: persisted.length,
+      },
+    );
+    await db
+      .update(studyDocuments)
+      .set({
+        extractionMetadata: metadataWithProgress(sourceMetadata, progress),
+      })
+      .where(eq(studyDocuments.id, input.documentId));
     const completedAt = new Date();
+    progress = createStudyDocumentProgress(
+      "embedding",
+      ["stored", "downloaded", "extracted", "organized", "indexed"],
+      {
+        pageCount: extracted.pages.length,
+        sectionCount: persisted.length,
+        chunkCount: chunks.length,
+        embeddedChunkCount: 0,
+        embeddingStatus: "processing",
+      },
+    );
     await db.transaction(async (tx) => {
       await tx
         .delete(studyChunks)
@@ -280,6 +458,7 @@ export async function processStudyDocument(input: ProcessStudyDocumentInput) {
             sectionCount: persisted.length,
             chunkCount: chunks.length,
             retrievalMode: "keyword",
+            processing: progress,
           },
           processedAt: completedAt,
         })
@@ -314,7 +493,50 @@ export async function processStudyDocument(input: ProcessStudyDocumentInput) {
           }
         });
         embedded += batch.length;
+        progress = createStudyDocumentProgress(
+          "embedding",
+          ["stored", "downloaded", "extracted", "organized", "indexed"],
+          {
+            pageCount: extracted.pages.length,
+            sectionCount: persisted.length,
+            chunkCount: chunks.length,
+            embeddedChunkCount: embedded,
+            embeddingStatus: "processing",
+          },
+        );
+        await db
+          .update(studyDocuments)
+          .set({
+            extractionMetadata: metadataWithProgress(
+              {
+                ...extracted.metadata,
+                sectionCount: persisted.length,
+                chunkCount: chunks.length,
+                retrievalMode: "keyword",
+              },
+              progress,
+            ),
+          })
+          .where(eq(studyDocuments.id, input.documentId));
       }
+      progress = createStudyDocumentProgress(
+        "ready",
+        [
+          "stored",
+          "downloaded",
+          "extracted",
+          "organized",
+          "indexed",
+          "embedded",
+        ],
+        {
+          pageCount: extracted.pages.length,
+          sectionCount: persisted.length,
+          chunkCount: chunks.length,
+          embeddedChunkCount: embedded,
+          embeddingStatus: "complete",
+        },
+      );
       await db
         .update(studyDocuments)
         .set({
@@ -324,6 +546,7 @@ export async function processStudyDocument(input: ProcessStudyDocumentInput) {
             chunkCount: chunks.length,
             retrievalMode: "hybrid",
             embeddedChunkCount: embedded,
+            processing: progress,
           },
         })
         .where(eq(studyDocuments.id, input.documentId));
@@ -333,6 +556,32 @@ export async function processStudyDocument(input: ProcessStudyDocumentInput) {
         sessionId: input.sessionId,
         ...errorFingerprint(error),
       });
+      progress = createStudyDocumentProgress(
+        "ready",
+        ["stored", "downloaded", "extracted", "organized", "indexed"],
+        {
+          pageCount: extracted.pages.length,
+          sectionCount: persisted.length,
+          chunkCount: chunks.length,
+          embeddedChunkCount: embedded,
+          embeddingStatus: "deferred",
+          message:
+            "The document is ready with keyword search; semantic search is unavailable.",
+        },
+      );
+      await db
+        .update(studyDocuments)
+        .set({
+          extractionMetadata: {
+            ...extracted.metadata,
+            sectionCount: persisted.length,
+            chunkCount: chunks.length,
+            retrievalMode: "keyword",
+            embeddedChunkCount: embedded,
+            processing: progress,
+          },
+        })
+        .where(eq(studyDocuments.id, input.documentId));
     }
     return {
       sectionCount: persisted.length,
@@ -347,12 +596,21 @@ export async function processStudyDocument(input: ProcessStudyDocumentInput) {
             error.message === "No usable study sections were found."
           ? error.message
           : undefined;
+    progress = createStudyDocumentProgress("failed", progress.completedSteps, {
+      pageCount: progress.pageCount,
+      sectionCount: progress.sectionCount,
+      chunkCount: progress.chunkCount,
+      embeddedChunkCount: progress.embeddedChunkCount,
+      embeddingStatus: progress.embeddingStatus,
+      message: message ?? "Text extraction failed.",
+    });
     await db.transaction(async (tx) => {
       await tx
         .update(studyDocuments)
         .set({
           status: "failed",
           errorMessage: message ?? "Text extraction failed.",
+          extractionMetadata: metadataWithProgress(sourceMetadata, progress),
         })
         .where(eq(studyDocuments.id, input.documentId));
       await tx

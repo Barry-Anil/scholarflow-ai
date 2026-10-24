@@ -2,6 +2,7 @@ import { and, count, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 import { STUDY_STORAGE_BUCKET } from "@/features/study-tutor/constants";
+import { readStudyDocumentProgress } from "@/features/study-tutor/processing-progress";
 import { getOptionalUser } from "@/lib/auth/session";
 import { getDatabase } from "@/lib/db";
 import { studyDocuments, studySections, studySessions } from "@/lib/db/schema";
@@ -24,6 +25,7 @@ export async function GET(
       status: studySessions.status,
       documentStatus: studyDocuments.status,
       error: studyDocuments.errorMessage,
+      metadata: studyDocuments.extractionMetadata,
       sectionCount: count(studySections.id),
     })
     .from(studySessions)
@@ -36,9 +38,17 @@ export async function GET(
     .limit(1);
   if (!session)
     return NextResponse.json({ error: "Session not found." }, { status: 404 });
-  return NextResponse.json(session, {
-    headers: { "Cache-Control": "private, no-store" },
-  });
+  const { metadata, ...result } = session;
+  return NextResponse.json(
+    {
+      ...result,
+      processing: readStudyDocumentProgress(
+        metadata,
+        session.documentStatus ?? session.status,
+      ),
+    },
+    { headers: { "Cache-Control": "private, no-store" } },
+  );
 }
 
 export async function DELETE(

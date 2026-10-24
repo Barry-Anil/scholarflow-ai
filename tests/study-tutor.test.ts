@@ -5,6 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import { validateStudyFileSignature } from "@/features/study-tutor/extract";
 import { extractPptxText } from "@/features/study-tutor/pptx";
+import {
+  createStudyDocumentProgress,
+  readStudyDocumentProgress,
+} from "@/features/study-tutor/processing-progress";
 import { detectStudySections } from "@/features/study-tutor/sections";
 import { synthesizeInworldSpeech } from "@/lib/tts/inworld";
 
@@ -105,6 +109,14 @@ describe("Study Tutor production workflow", () => {
     resolve("src/features/study-tutor/study-workspace.tsx"),
     "utf8",
   );
+  const home = readFileSync(
+    resolve("src/features/study-tutor/study-tutor-home.tsx"),
+    "utf8",
+  );
+  const processor = readFileSync(
+    resolve("src/features/study-tutor/processor.ts"),
+    "utf8",
+  );
 
   it("queues extraction instead of processing a large document in the request", () => {
     expect(uploadRoute).toContain("STUDY_DOCUMENT_JOB_TYPE");
@@ -121,5 +133,51 @@ describe("Study Tutor production workflow", () => {
   it("keeps generated lessons available across section and mode switches", () => {
     expect(workspace).toContain("generatedLessons");
     expect(workspace).toContain("setGeneratedLessons");
+  });
+
+  it("persists real document-processing milestones", () => {
+    expect(processor).toContain('"organizing"');
+    expect(processor).toContain('"indexing"');
+    expect(processor).toContain('"embedding"');
+    expect(processor).toContain("embeddedChunkCount");
+  });
+
+  it("contains long titles and filenames inside session cards", () => {
+    expect(home).toContain("[overflow-wrap:anywhere]");
+    expect(home).toContain('className="truncate"');
+  });
+});
+
+describe("Study Tutor processing progress", () => {
+  it("round-trips persisted milestone details", () => {
+    const processing = createStudyDocumentProgress(
+      "embedding",
+      ["stored", "downloaded", "extracted", "organized", "indexed"],
+      {
+        pageCount: 12,
+        sectionCount: 5,
+        chunkCount: 18,
+        embeddedChunkCount: 9,
+        embeddingStatus: "processing",
+      },
+    );
+    expect(readStudyDocumentProgress({ processing }, "processing")).toEqual(
+      processing,
+    );
+  });
+
+  it("uses conservative milestones for legacy ready documents", () => {
+    const progress = readStudyDocumentProgress(
+      { sectionCount: 3, chunkCount: 7, retrievalMode: "keyword" },
+      "ready",
+    );
+    expect(progress.completedSteps).toEqual([
+      "stored",
+      "downloaded",
+      "extracted",
+      "organized",
+      "indexed",
+    ]);
+    expect(progress.embeddingStatus).toBe("deferred");
   });
 });

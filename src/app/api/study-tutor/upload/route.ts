@@ -10,6 +10,7 @@ import {
   STUDY_STORAGE_BUCKET,
 } from "@/features/study-tutor/constants";
 import { validateStudyFileSignature } from "@/features/study-tutor/extract";
+import { createStudyDocumentProgress } from "@/features/study-tutor/processing-progress";
 import { getOptionalUser } from "@/lib/auth/session";
 import { getDatabase } from "@/lib/db";
 import { processingJobs, studyDocuments, studySessions } from "@/lib/db/schema";
@@ -114,6 +115,9 @@ export async function POST(request: Request) {
           storagePath,
           sha256,
           status: "queued",
+          extractionMetadata: {
+            processing: createStudyDocumentProgress("queued", ["stored"]),
+          },
         });
         await tx.insert(processingJobs).values({
           id: jobId,

@@ -16,7 +16,7 @@ import {
 } from "@/features/agents/worker-heartbeat";
 import { closeDatabase, getDatabase } from "@/lib/db";
 import { processingJobs } from "@/lib/db/schema";
-import { getDatabaseEnv } from "@/lib/env/server";
+import { getDatabaseEnv, getSupabaseAdminEnv } from "@/lib/env/server";
 import { errorFingerprint } from "@/lib/errors";
 import { logger } from "@/lib/logging/logger";
 import { eq } from "drizzle-orm";
@@ -61,6 +61,19 @@ async function main() {
     heartbeatMs: config.heartbeatMs,
     pollMs: config.pollMs,
   });
+  // Study Tutor jobs download uploads from Supabase Storage; agent jobs do not.
+  // Report a missing configuration once, by name only, instead of per job.
+  try {
+    getSupabaseAdminEnv();
+  } catch {
+    logger.error("study.worker_storage_unconfigured", {
+      workerId,
+      missing: ["NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]
+        .filter((name) => !process.env[name])
+        .join(", "),
+      impact: "Study Tutor uploads will fail until these are set.",
+    });
+  }
 
   let currentJobId: string | null = null;
   await recordWorkerHeartbeat(workerId, null);

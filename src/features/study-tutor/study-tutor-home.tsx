@@ -11,8 +11,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  createStudyDocumentProgress,
+  type StudyDocumentProgress,
+} from "./processing-progress";
+import { StudyProcessingDetails } from "./study-processing-details";
 
 type SessionSummary = {
   id: string;
@@ -20,6 +24,7 @@ type SessionSummary = {
   status: string;
   filename: string | null;
   sectionCount: number;
+  processing: StudyDocumentProgress;
   lastActivityAt: Date;
   createdAt: Date;
 };
@@ -33,6 +38,7 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
     state: "idle" | "uploading" | "processing" | "error";
     percent: number;
     message?: string;
+    processing?: StudyDocumentProgress;
   }>({
     state: "idle",
     percent: 0,
@@ -40,6 +46,12 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
   const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => () => void (pollRun.current += 1), []);
+
+  useEffect(() => {
+    if (!sessions.some((session) => session.status === "processing")) return;
+    const timer = window.setInterval(() => router.refresh(), 3_000);
+    return () => window.clearInterval(timer);
+  }, [router, sessions]);
 
   async function waitForProcessing(sessionId: string) {
     const run = ++pollRun.current;
@@ -51,9 +63,18 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
         const payload = (await response.json()) as {
           status?: string;
           error?: string;
+          processing?: StudyDocumentProgress;
         };
         if (!response.ok)
           throw new Error(payload.error ?? "Session status is unavailable.");
+        if (payload.processing) {
+          setUpload((current) => ({
+            ...current,
+            state: "processing",
+            percent: 100,
+            processing: payload.processing,
+          }));
+        }
         if (payload.status === "ready") {
           router.push(`/study-tutor/${sessionId}`);
           return;
@@ -96,7 +117,12 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
         percent,
       });
     };
-    xhr.upload.onload = () => setUpload({ state: "processing", percent: 100 });
+    xhr.upload.onload = () =>
+      setUpload({
+        state: "processing",
+        percent: 100,
+        processing: createStudyDocumentProgress("queued", ["stored"]),
+      });
     xhr.onload = () => {
       let payload: { sessionId?: string; error?: string } = {};
       try {
@@ -105,7 +131,11 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
         /* handled below */
       }
       if (xhr.status >= 200 && xhr.status < 300 && payload.sessionId) {
-        setUpload({ state: "processing", percent: 100 });
+        setUpload({
+          state: "processing",
+          percent: 100,
+          processing: createStudyDocumentProgress("queued", ["stored"]),
+        });
         void waitForProcessing(payload.sessionId);
         return;
       }
@@ -208,6 +238,14 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
               </div>
             )}
           </button>
+          {upload.state === "processing" && upload.processing && (
+            <div className="mx-auto mt-4 max-w-2xl">
+              <StudyProcessingDetails
+                progress={upload.processing}
+                defaultExpanded
+              />
+            </div>
+          )}
           <input
             ref={inputRef}
             className="sr-only"
@@ -239,7 +277,7 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
               {sessions.map((session) => (
                 <Card
                   key={session.id}
-                  className="group p-5 transition-colors hover:border-teal-300"
+                  className="group min-w-0 p-5 transition-colors hover:border-teal-300"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="rounded-xl bg-teal-50 p-2.5 text-teal-700">
@@ -261,14 +299,20 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
                   </div>
                   <Link
                     href={`/study-tutor/${session.id}`}
-                    className="mt-4 block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/30"
+                    title={session.title}
+                    className="mt-4 block min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/30"
                   >
-                    <h3 className="font-semibold text-slate-950 group-hover:text-teal-800">
+                    <h3 className="line-clamp-2 max-w-full break-words font-semibold text-slate-950 [overflow-wrap:anywhere] group-hover:text-teal-800">
                       {session.title}
                     </h3>
-                    <p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                      <FileText className="size-3.5" />
-                      {session.filename}
+                    <p className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
+                      <FileText className="size-3.5 shrink-0" />
+                      <span
+                        className="truncate"
+                        title={session.filename ?? undefined}
+                      >
+                        {session.filename}
+                      </span>
                     </p>
                     <div className="mt-4 flex items-center justify-between text-xs">
                       <span
@@ -287,6 +331,10 @@ export function StudyTutorHome({ sessions }: { sessions: SessionSummary[] }) {
                       </span>
                     </div>
                   </Link>
+                  <StudyProcessingDetails
+                    progress={session.processing}
+                    defaultExpanded={session.status === "processing"}
+                  />
                 </Card>
               ))}
             </div>

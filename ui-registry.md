@@ -327,19 +327,19 @@ Last updated: 2026-10-20
 
 ### Study Tutor workspace
 
-Files: `src/features/study-tutor/study-tutor-home.tsx`, `src/features/study-tutor/study-workspace.tsx`
-Last updated: 2026-10-23
+Files: `src/features/study-tutor/study-tutor-home.tsx`, `src/features/study-tutor/study-processing-details.tsx`, `src/features/study-tutor/study-workspace.tsx`
+Last updated: 2026-10-24
 
-| Property         | Class                                                                                         |
-| ---------------- | --------------------------------------------------------------------------------------------- |
+| Property         | Class                                                                                          |
+| ---------------- | ---------------------------------------------------------------------------------------------- |
 | Background       | `bg-canvas` page; `bg-white` panels; `bg-slate-50/70` source, upload, and lesson subpanels     |
 | Border           | `border border-slate-200`; upload and empty states use `border-dashed border-slate-300`        |
 | Border radius    | `rounded-2xl` primary panels; `rounded-xl` controls, section rows, messages, and nested panels |
 | Text — primary   | `text-slate-950 font-semibold`; document content uses `text-slate-700 text-sm leading-7`       |
-| Text — secondary | `text-slate-500 text-xs`; provenance and support details use compact uppercase labels          |
-| Spacing          | page `p-4 lg:p-6`; panels `p-4` or `p-5`; lesson blocks `space-y-6`; compact controls `gap-2`  |
+| Text — secondary | `text-slate-500 text-xs`; pending processing steps use `text-slate-400`                        |
+| Spacing          | page `p-4 lg:p-6`; panels `p-4` or `p-5`; processing details `p-3` and `space-y-2`             |
 | Hover state      | `hover:bg-slate-100`; linked cards and drop zones use `hover:border-teal-300`                  |
 | Shadow           | `shadow-sm` on primary panels only; none on nested learning content                            |
-| Accent usage     | Teal for active learning/completion; sky for examples; amber mixed support; rose failures      |
+| Accent usage     | Teal completion; sky active processing; amber deferred/retry states; rose failures             |
 
-**Pattern notes:** Desktop study workspaces use a section rail, a flexible lesson canvas, and a grounded chat rail; mobile replaces this with three explicit tabs rather than squeezing columns. Progress bars represent persisted explicit completions only. Generated content always sits beside expandable real source text and traceable page/slide labels. Chat support labels distinguish document-backed, mixed, and insufficient answers. Audio controls remain compact and always state whether speech stays in-browser or is generated on demand without storage.
+**Pattern notes:** Desktop study workspaces use a section rail, a flexible lesson canvas, and a grounded chat rail; mobile replaces this with three explicit tabs rather than squeezing columns. Progress bars and document-processing steps represent persisted explicit completions only—never simulated percentages. Processing details stay expandable after completion, expose real section/chunk/embedding counts, and describe keyword fallback when semantic embeddings are deferred. Long session titles use a two-line clamp with `overflow-wrap:anywhere`; filenames truncate while retaining the full value in a title attribute. Generated content always sits beside expandable real source text and traceable page/slide labels. Chat support labels distinguish document-backed, mixed, and insufficient answers. Audio controls remain compact and always state whether speech stays in-browser or is generated on demand without storage.

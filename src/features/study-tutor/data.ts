@@ -13,6 +13,7 @@ import {
   studySections,
   studySessions,
 } from "@/lib/db/schema";
+import { readStudyDocumentProgress } from "./processing-progress";
 
 export const getStudyTutorHomeData = cache(async () => {
   const user = await requireUser();
@@ -25,15 +26,25 @@ export const getStudyTutorHomeData = cache(async () => {
       lastActivityAt: studySessions.lastActivityAt,
       createdAt: studySessions.createdAt,
       filename: studyDocuments.originalFilename,
+      documentStatus: studyDocuments.status,
+      metadata: studyDocuments.extractionMetadata,
       sectionCount: count(studySections.id),
     })
     .from(studySessions)
     .leftJoin(studyDocuments, eq(studyDocuments.sessionId, studySessions.id))
     .leftJoin(studySections, eq(studySections.sessionId, studySessions.id))
     .where(eq(studySessions.ownerId, user.id))
-    .groupBy(studySessions.id, studyDocuments.originalFilename)
+    .groupBy(studySessions.id, studyDocuments.id)
     .orderBy(desc(studySessions.lastActivityAt));
-  return { sessions: rows };
+  return {
+    sessions: rows.map(({ metadata, documentStatus, ...session }) => ({
+      ...session,
+      processing: readStudyDocumentProgress(
+        metadata,
+        documentStatus ?? session.status,
+      ),
+    })),
+  };
 });
 
 export const getStudySessionData = cache(async (sessionId: string) => {
